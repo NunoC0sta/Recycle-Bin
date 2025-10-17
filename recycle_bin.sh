@@ -58,30 +58,42 @@ echo "${timestamp}_${random}"
 # Returns: 0 on success, 1 on failure
 #################################################
 delete_file() {
-	# TODO: Implement this function
-	local file_path="$1"	
-	# Validate input
-	if [ -z "$file_path" ]; then
-		echo -e "${RED}Error: No file specified${NC}"
-		return 1
-	fi
-	# Check if file exists
-	if [ ! -e "$file_path" ]; then
-		echo -e "${RED}Error: File '$file_path' does not exist${NC}"
-		return 1
-	fi
-	# Your code here
-	# Hint: Get file metadata using stat command
-	# Hint: Generate unique ID
-	# Hint: Move file to FILES_DIR with unique ID
-	# Hint: Add entry to metadata file
+	local id
+	local name
+	local path
+	local delete_date
+	local size 
+	local type 
+	local permissions 
+	local owner
+
 	for file in "$@"; do
+
+		if [ -z "$file" ]; then
+			echo -e "${RED}Error: No file specified${NC}"
+			return 1
+		fi
+		# Check if file exists
+		if [ ! -e "$file" ]; then
+			echo -e "${RED}Error: File '$file' does not exist${NC}"
+			return 1
+		fi
+
 		if [ -e "$file" ]; then
-            echo
+			id=$(generate_unique_id)
+			name=$(basename $file)
+			path=$(realpath $file)
+			delete_date=$(date +"%d-%m-%Y")
+			size=$(stat -c %s "$file")
+            type=$(file --brief "$file")
+            permissions=$(stat -c %A "$file")
+            owner=$(stat -c %U "$file")
+			echo -n "$id,$name,$path,$delete_date,$size$type,$permissions,$owner" >> $METADATA_FILE
+			mv "$file" "$FILES_DIR/$id"
+			echo "Delete function called with: $file"
         fi
 	done
 	
-	echo "Delete function called with: $file_path"
 	return 0
 }
 
@@ -195,7 +207,6 @@ return 0
 main() {
 	initialize_recyclebin
 	generate_unique_id
-
-	
+	delete_file /home/nuno/asdasdasdas.txt
 }
 main "$@"
