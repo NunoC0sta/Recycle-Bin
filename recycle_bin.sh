@@ -76,7 +76,7 @@ delete_file() {
 		# Check if file exists
 		if [ ! -e "$file" ]; then
 			echo -e "${RED}Error: File '$file' does not exist${NC}"
-			return 1
+			continue
 		fi
 
 		if [ -e "$file" ]; then
@@ -85,10 +85,10 @@ delete_file() {
 			path=$(realpath $file)
 			delete_date=$(date +"%d-%m-%Y")
 			size=$(stat -c %s "$file")
-            type=$(file --brief "$file")
+            type=$(file --brief "$file" | tr ',' ';')
             permissions=$(stat -c %A "$file")
             owner=$(stat -c %U "$file")
-			echo "$id,$name,$path,$delete_date,$size$type,$permissions,$owner" >> $METADATA_FILE
+			echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> $METADATA_FILE
 			mv "$file" "$FILES_DIR/$id"
 			echo "Delete function called with: $file"
         fi
@@ -105,21 +105,21 @@ delete_file() {
 # Returns: 0 on success
 #################################################
 list_recycled() {
-    echo "=== Conteúdo da Recycle Bin ==="
+    echo "=== Recycle Bin Content ==="
 
     # Verifica se o ficheiro metadata existe e não está vazio
     if [ ! -s "$METADATA_FILE" ]; then
-        echo "A reciclagem está vazia."
+        echo "The Recycle Bin is empty."
         return 0
     fi
 
-    # Lê o ficheiro metadata linha a linha, ignorando o cabeçalho
-    tail -n +3 "$METADATA_FILE" | while IFS=',' read -r id nome caminho data tamanho tipo permissoes dono; do
+    # Lê o ficheiro metadata linha a linha, ignora o cabeçalho
+    tail -n +2 "$METADATA_FILE" | while IFS=',' read -r id nome caminho data tamanho tipo permissoes dono; do
         echo "ID: $id"
-        echo "Nome: $nome"
-        echo "Data: $data"
-        echo "Tamanho: $tamanho"
-        echo "Tipo: $tipo"
+        echo "Name: $nome"
+        echo "Date: $data"
+        echo "Size: $tamanho"
+        echo "Type: $tipo"
         echo "------------------------------"
     done
 
@@ -218,6 +218,8 @@ return 0
 main() {
 	initialize_recyclebin
 	generate_unique_id
-	delete_file /home/nuno/ASDasd.html /home/nuno/as.txt
+	delete_file /home/nuno/Test2.html /home/nuno/Test1.txt
+	list_recycled
+	#display_help
 }
 main "$@"
