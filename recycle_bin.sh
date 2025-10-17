@@ -105,15 +105,26 @@ delete_file() {
 # Returns: 0 on success
 #################################################
 list_recycled() {
-# TODO: Implement this function
-echo "=== Recycle Bin Contents ==="
-# Your code here
-# Hint: Read metadata file and format output
-# Hint: Use printf for formatted table
-# Hint: Skip header line
-return 0
-}
+    echo "=== Conteúdo da Recycle Bin ==="
 
+    # Verifica se o ficheiro metadata existe e não está vazio
+    if [ ! -s "$METADATA_FILE" ]; then
+        echo "A reciclagem está vazia."
+        return 0
+    fi
+
+    # Lê o ficheiro metadata linha a linha, ignorando o cabeçalho
+    tail -n +3 "$METADATA_FILE" | while IFS=',' read -r id nome caminho data tamanho tipo permissoes dono; do
+        echo "ID: $id"
+        echo "Nome: $nome"
+        echo "Data: $data"
+        echo "Tamanho: $tamanho"
+        echo "Tipo: $tipo"
+        echo "------------------------------"
+    done
+
+    return 0
+}
 
 #################################################
 # Function: restore_file
