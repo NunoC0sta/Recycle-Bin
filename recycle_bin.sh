@@ -88,7 +88,7 @@ delete_file() {
             type=$(file --brief "$file")
             permissions=$(stat -c %A "$file")
             owner=$(stat -c %U "$file")
-			echo -n "$id,$name,$path,$delete_date,$size$type,$permissions,$owner" >> $METADATA_FILE
+			echo "$id,$name,$path,$delete_date,$size$type,$permissions,$owner" >> $METADATA_FILE
 			mv "$file" "$FILES_DIR/$id"
 			echo "Delete function called with: $file"
         fi
@@ -207,6 +207,6 @@ return 0
 main() {
 	initialize_recyclebin
 	generate_unique_id
-	delete_file /home/nuno/asdasdasdas.txt
+	delete_file /home/nuno/ASDasd.html /home/nuno/as.txt
 }
 main "$@"
