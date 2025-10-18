@@ -54,7 +54,8 @@ echo "${timestamp}_${random}"
 #################################################
 # Function: delete_file
 # Description: Moves file/directory to recycle bin
-# Parameters: $1 - path to file/directory
+# Parameters: $@ - All files/directories being passed to the function
+#             $1 $2 - Individual Arguments
 # Returns: 0 on success, 1 on failure
 #################################################
 delete_file() {
@@ -66,33 +67,45 @@ delete_file() {
 	local type 
 	local permissions 
 	local owner
+    local rel_path=$FILES_DIR
 
-	for file in "$@"; do
+    if [ "$#" -eq 0 ]; then
+        echo "Error: No file specified"
+        return 1
+    fi
 
-		if [ -z "$file" ]; then
-			echo -e "${RED}Error: No file specified${NC}"
-			return 1
-		fi
-		# Check if file exists
-		if [ ! -e "$file" ]; then
-			echo -e "${RED}Error: File '$file' does not exist${NC}"
-			continue
-		fi
+    if [ ! -e "$1" ]; then
+        echo "Error: '$1' does not exist"
+        return 1
+    fi
 
-		if [ -e "$file" ]; then
-			id=$(generate_unique_id)
-			name=$(basename $file)
-			path=$(realpath $file)
-			delete_date=$(date +"%d-%m-%Y")
-			size=$(stat -c %s "$file")
-            type=$(file --brief "$file" | tr ',' ';')
-            permissions=$(stat -c %A "$file")
-            owner=$(stat -c %U "$file")
-			echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> $METADATA_FILE
-			mv "$file" "$FILES_DIR/$id"
-			echo "Delete function called with: $file"
+    for file in "$@"; do
+
+        id=$(generate_unique_id)
+        name=$(basename "$file")
+        path=$(realpath "$file")
+        delete_date=$(date +%d-%m-%Y)
+        size=$(stat -c %s "$file")
+        type=$(basename "$file" | sed 's/.*\.//')
+        permissions=$(stat -c %A "$file")
+        owner=$(stat -c %U "$file")
+
+        #Checks if the path of the argument currently being utilized by the function is a directory
+        if [ -d "$file" ]; then
+            echo "$id,$name,$path,$(date +%d-%m-%Y),$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
+            mv "$file" "$FILES_DIR/$id"
+
+            for dir_file in "$FILES_DIR/$id"/*; do
+                delete_file "$dir_file" 
+            done
+            
+
+        elif [ -f "$file" ]; then
+            echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> "$METADATA_FILE"
+            mv "$file" "$FILES_DIR/$id.$type"
         fi
-	done
+
+    done
 	
 	return 0
 }
@@ -218,7 +231,7 @@ return 0
 main() {
 	initialize_recyclebin
 	generate_unique_id
-	delete_file /home/nuno/Test2.html /home/nuno/Test1.txt
+	delete_file /home/nuno/Test
 	list_recycled
 	#display_help
 }
