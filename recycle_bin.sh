@@ -174,8 +174,6 @@ empty_recyclebin() {
 # Hint: Delete all files in FILES_DIR
 # Hint: Reset metadata file
 
-if [ "$#" -eq 0 ]; then
-
     if [ "$#" -eq 0 ]; then
         while true; do
             read -rp "Delete all it ems in recycle bin? (y/n): " answer
@@ -198,7 +196,10 @@ if [ "$#" -eq 0 ]; then
                     ;;
             esac
         done
+    elif [ "$#" -ne 0 ]; then
+        echo Deleting $@ files...
     fi
+    
 return 0
 }
 
@@ -254,10 +255,35 @@ return 0
 # Returns: Exit code
 #################################################
 main() {
-	initialize_recyclebin
-	generate_unique_id
-	delete_file /home/nuno/Test
-	list_recycled
-	#display_help
+    # Initialize recycle bin
+    initialize_recyclebin
+    # Parse command line arguments
+    case "$1" in
+        delete)
+            shift
+            delete_file "$@"
+            ;;
+        list)
+            list_recycled
+            ;;
+        restore)
+            restore_file "$2"
+            ;;
+        search)
+            search_recycled "$2"
+            ;;
+        empty)
+            empty_recyclebin
+            ;;
+        help|--help|-h)
+            display_help
+            ;;
+        *)
+            echo "Invalid option. Use 'help' for usage information."
+            exit 1
+            ;;
+        esac
 }
+
+# Execute main function with all arguments
 main "$@"
