@@ -55,7 +55,6 @@ echo "${timestamp}_${random}"
 # Function: delete_file
 # Description: Moves file/directory to recycle bin
 # Parameters: $@ - All files/directories being passed to the function
-#             $1 $2 - Individual Arguments
 # Returns: 0 on success, 1 on failure
 #################################################
 delete_file() {
@@ -84,7 +83,7 @@ delete_file() {
         id=$(generate_unique_id)
         name=$(basename "$file")
         path=$(realpath "$file")
-        delete_date=$(date +%d-%m-%Y)
+        delete_date=$(date "+%Y-%m-%d %H:%M:%S")
         size=$(stat -c %s "$file")
         type=$(basename "$file" | sed 's/.*\.//')
         permissions=$(stat -c %A "$file")
@@ -92,7 +91,7 @@ delete_file() {
 
         #Checks if the path of the argument currently being utilized by the function is a directory
         if [ -d "$file" ]; then
-            echo "$id,$name,$path,$(date +%d-%m-%Y),$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
+            echo "$id,$name,$path,$delete_date,$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
             mv "$file" "$FILES_DIR/$id"
 
             for dir_file in "$FILES_DIR/$id"/*; do
@@ -146,18 +145,18 @@ list_recycled() {
 # Returns: 0 on success, 1 on failure
 #################################################
 restore_file() {
-# TODO: Implement this function
-local file_id="$1"
-if [ -z "$file_id" ]; then
-echo -e "${RED}Error: No file ID specified${NC}"
-return 1
-fi
-# Your code here
-# Hint: Search metadata for matching ID
-# Hint: Get original path from metadata
-# Hint: Check if original path exists
-# Hint: Move file back and restore permissions
-# Hint: Remove entry from metadata
+    # TODO: Implement this function
+    local file_id="$1"
+    if [ -z "$file_id" ]; then
+    echo -e "${RED}Error: No file ID specified${NC}"
+    return 1
+        fi
+    # Your code here
+    # Hint: Search metadata for matching ID
+    # Hint: Get original path from metadata
+    # Hint: Check if original path exists
+    # Hint: Move file back and restore permissions
+    # Hint: Remove entry from metadata
 return 0
 }
 
@@ -174,6 +173,32 @@ empty_recyclebin() {
 # Hint: Ask for confirmation
 # Hint: Delete all files in FILES_DIR
 # Hint: Reset metadata file
+
+if [ "$#" -eq 0 ]; then
+
+    if [ "$#" -eq 0 ]; then
+        while true; do
+            read -rp "Delete all it ems in recycle bin? (y/n): " answer
+            case "$answer" in
+                [Yy]) 
+                    echo "Deleting Files..."
+                    echo "List of Files being deleted:"
+                    list_recycled
+                    rm -rf "$FILES_DIR"/*
+                    echo "Recycle Bin Emptied."
+                    echo "ID,ORIGINAL_NAME,ORIGINAL_PATH,DELETION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER" > "$METADATA_FILE"
+                    break
+                    ;;
+                [Nn])
+                    echo "Operation cancelled."
+                    break   
+                    ;;
+                *)
+                    echo "Invalid input. Please enter 'yY' or 'nN'."
+                    ;;
+            esac
+        done
+    fi
 return 0
 }
 
