@@ -168,34 +168,61 @@ return 0
 # Returns: 0 on success
 #################################################
 empty_recyclebin() {
+    # Arguments:
+    #   [ids or patterns...] - optional, specify files to delete selectively
+
     if [ "$#" -eq 0 ]; then
-        while true; do
-            read -rp "Delete all it ems in recycle bin? (y/n): " answer
-            case "$answer" in
-                [Yy]) 
-                    echo "Deleting Files..."
-                    echo "List of Files being deleted:"
-                    list_recycled
-                    rm -rf "$FILES_DIR"/*
-                    echo "Recycle Bin Emptied."
-                    echo "ID,ORIGINAL_NAME,ORIGINAL_PATH,DELETION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER" > "$METADATA_FILE"
-                    break
-                    ;;
-                [Nn])
-                    echo "Operation cancelled."
-                    break   
-                    ;;
-                *)
-                    echo "Invalid input. Please enter 'yY' or 'nN'."
-                    ;;
-            esac
-        done
-    elif [ "$#" -ne 0 ]; then
-        echo Deleting $@ files...
+        echo "Delete all items in recycle bin permanently?"
+        read -rp "(y/n): " confirm
+        case "$confirm" in
+            [Yy]*)
+                echo "Deleting all files..."
+                echo "List of files being deleted:"
+                list_recycled
+                count=$(find "$FILES_DIR" -type f | wc -l)
+                size=$(du -ch "$FILES_DIR" | tail -n 1 | awk '{print $1}')
+                rm -rf "$FILES_DIR"/*
+                echo "Recycle Bin emptied ($count files, total size $size)."
+                # Reset metadata file
+                echo "ID,ORIGINAL_NAME,ORIGINAL_PATH,DELETION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER" > "$METADATA_FILE"
+                ;;
+            [Nn]*)
+                echo "Operation cancelled."
+                ;;
+            *)
+                echo "Invalid input. Please enter y or n."
+                ;;
+        esac
+    elif [ "$#" -gt 0 ]; then
+        echo "Delete specified items permanently?"
+        read -rp "(y/n): " confirm
+        case "$confirm" in
+            [Yy]*)
+                for pattern in "$@"; do
+                    echo "Deleting items matching pattern: $pattern"
+                    rm -rf "$FILES_DIR"/$pattern*
+                    # Remove matching entries from metadata
+                    grep -v "^$pattern" "$METADATA_FILE" > "$METADATA_FILE.tmp"
+                    mv "$METADATA_FILE.tmp" "$METADATA_FILE"
+                done
+                echo "Specified items deleted."
+                ;;
+            [Nn]*)
+                echo "Operation cancelled."
+                ;;
+            *)
+                echo "Invalid input. Please enter y or n."
+                ;;
+        esac
+    else
+        echo "Error: Invalid arguments"
+        return 1
+
     fi
-    
-return 0
+
+    return 0
 }
+
 
 
 #################################################
@@ -267,7 +294,8 @@ main() {
             search_recycled "$2"
             ;;
         empty)
-            empty_recyclebin
+            shift
+            empty_recyclebin "$@"
             ;;
         help|--help|-h)
             display_help
