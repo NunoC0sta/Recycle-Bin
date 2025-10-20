@@ -90,16 +90,17 @@ delete_file() {
         owner=$(stat -c %U "$file")
 
         #Checks if the path of the argument currently being utilized by the function is a directory
-        if [ -d "$file" ]; then
-            echo "$id,$name,$path,$delete_date,$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
-            mv "$file" "$FILES_DIR/$id"
-
-            for dir_file in "$FILES_DIR/$id"/*; do
-                delete_file "$dir_file" 
+        if [[ -d "$file" ]]; then
+            find "$file" -mindepth 1 | while read -r sub_item; do
+            delete_file "$sub_item"
             done
+            echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> "$METADATA_FILE"
+            mv "$file" "$FILES_DIR/$id.$type"
+            
+        fi
             
 
-        elif [ -f "$file" ]; then
+        if [ -f "$file" ]; then
             echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> "$METADATA_FILE"
             mv "$file" "$FILES_DIR/$id.$type"
         fi
