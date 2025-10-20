@@ -168,12 +168,6 @@ return 0
 # Returns: 0 on success
 #################################################
 empty_recyclebin() {
-# TODO: Implement this function
-# Your code here
-# Hint: Ask for confirmation
-# Hint: Delete all files in FILES_DIR
-# Hint: Reset metadata file
-
     if [ "$#" -eq 0 ]; then
         while true; do
             read -rp "Delete all it ems in recycle bin? (y/n): " answer
