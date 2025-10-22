@@ -149,9 +149,15 @@ restore_file() {
     # TODO: Implement this function
     local file_id="$1"
     if [ -z "$file_id" ]; then
-    echo -e "${RED}Error: No file ID specified${NC}"
-    return 1
-        fi
+    	echo -e "${RED}Error: No file ID specified${NC}"
+    	return 1
+    fi
+
+	if []
+
+	
+
+	
     # Your code here
     # Hint: Search metadata for matching ID
     # Hint: Get original path from metadata
@@ -232,12 +238,48 @@ empty_recyclebin() {
 # Parameters: $1 - search pattern
 # Returns: 0 on success
 #################################################
+#################################################
+# Function: search_recycled
+# Description: Searches for files in recycle bin
+# Parameters: $1 - search pattern
+# Returns: 0 on success
+#################################################
 search_recycled() {
-# TODO: Implement this function
-local pattern="$1"
-# Your code here
-# Hint: Use grep to search metadata
-return 0
+    local pattern="$1"
+    if [ -z "$pattern" ]; then
+        echo -e "${RED}Error: No search pattern specified${NC}"
+        echo "Usage: $0 search <pattern>"
+        return 1
+    fi
+
+    echo "Results for '$pattern':"
+    results_found=0
+    while IFS=',' read -r id name path date size type perms owner; do
+        # Skip the header line
+        if [ "$id" = "ID" ]; then
+            continue
+        fi
+
+        # Check if any field matches the pattern (case-insensitive)
+        if echo "$id,$name,$path,$date,$size,$type,$perms,$owner" | grep -iq "$pattern"; then
+            echo "--------------------------------------------"
+            echo "ID: $id"
+            echo "Name: $name"
+            echo "Original path: $path"
+            echo "Deletion date: $date"
+            echo "Size: $size bytes"
+            echo "Type: $type"
+            echo "Permissions: $perms"
+            echo "Owner: $owner"
+            results_found=1
+        fi
+    done < "$METADATA_FILE"
+
+    if [ "$results_found" -eq 0 ]; then
+        echo "No results found."
+    fi
+
+    return 0
 }
 
 
