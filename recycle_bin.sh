@@ -278,15 +278,8 @@ search_recycled() {
 
         # Check if any field matches the pattern (case-insensitive)
         if echo "$id,$name,$path,$date,$size,$type,$perms,$owner" | grep -iq "$pattern"; then
-            echo "--------------------------------------------"
-            echo "ID: $id"
-            echo "Name: $name"
-            echo "Original path: $path"
-            echo "Deletion date: $date"
-            echo "Size: $size bytes"
-            echo "Type: $type"
-            echo "Permissions: $perms"
-            echo "Owner: $owner"
+            echo "-----------------------   ---------------------"
+            echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
             results_found=1
         fi
     done < "$METADATA_FILE"
@@ -306,25 +299,26 @@ search_recycled() {
 # Returns: 0
 #################################################
 display_help() {
-cat << EOF
+    cat << EOF
 Linux Recycle Bin - Usage Guide
+
 SYNOPSIS:
-$0 [OPTION] [ARGUMENTS]
+    $0 [OPTION] [ARGUMENTS]
 OPTIONS:
-delete <file> Move file/directory to recycle bin
-list List all items in recycle bin
-restore <id> Restore file by ID
-search <pattern> Search for files by name
-empty Empty recycle bin permanently
-help Display this help message
+    delete <file> Move file/directory to recycle bin
+    list List all items in recycle bin
+    restore <id> Restore file by ID
+    search <pattern> Search for files by name
+    empty Empty recycle bin permanently
+    help Display this help message
 EXAMPLES:
-$0 delete myfile.txt
-$0 list
-$0 restore 1696234567_abc123
-$0 search "*.pdf"
-$0 empty
+    $0 delete myfile.txt
+    $0 list
+    $0 restore 1696234567_abc123
+    $0 search "*.pdf"
+    $0 empty
 EOF
-return 0
+    return 0
 }
 
 
