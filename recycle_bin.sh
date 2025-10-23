@@ -94,7 +94,7 @@ delete_file() {
             find "$file" -mindepth 1 | while read -r sub_item; do
             delete_file "$sub_item"
             done
-            echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> "$METADATA_FILE"
+            echo "$id,$name,$path,$delete_date,$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
             mv "$file" "$FILES_DIR/$id.$type"
             
         fi
@@ -262,7 +262,7 @@ empty_recyclebin() {
 # Returns: 0 on success
 #################################################
 search_recycled() {
-    # Se o primeiro argumento for "date", ativa o modo de pesquisa por intervalo de datas
+        # If the first argument is "date", activate date-range mode
     if [ "$1" = "date" ]; then
         local start_date="$2"
         local end_date="$3"
@@ -276,7 +276,6 @@ search_recycled() {
         echo "Results for deletion dates between '$start_date' and '$end_date':"
         results_found=0
 
-        # Converter as datas em timestamps (para comparação numérica)
         local start_ts end_ts file_ts
         start_ts=$(date -d "$start_date" +%s 2>/dev/null)
         end_ts=$(date -d "$end_date" +%s 2>/dev/null)
@@ -287,24 +286,23 @@ search_recycled() {
             return 1
         fi
 
-        # Ler metadados e comparar datas
         tail -n +2 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
             file_ts=$(date -d "$date" +%s 2>/dev/null)
             if [ "$file_ts" -ge "$start_ts" ] && [ "$file_ts" -le "$end_ts" ]; then
-                echo "-----------------------   ---------------------"
-                echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
-                results_found=1
+                printf "%0.s-" {1..140}; echo
+                while IFS=',' read -r id name path date size type perms owner; do
+                    printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
+                        "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
+                done
             fi
         done
 
         if [ "$results_found" -eq 0 ]; then
             echo "No results found."
         fi
-
         return 0
     fi
 
-    # --- comportamento normal (procura por padrão em qualquer campo) ---
     local pattern="$1"
     if [ -z "$pattern" ]; then
         echo -e "${RED}Error: No search pattern specified${NC}"
@@ -315,17 +313,16 @@ search_recycled() {
     echo "Results for '$pattern':"
     results_found=0
     while IFS=',' read -r id name path date size type perms owner; do
-        # Skip the header line
         if [ "$name" = "ORIGINAL_NAME" ]; then
             continue
         elif [ "$name" = "TYPE" ]; then
             continue
         fi
-        
-        # Check if any field matches the pattern (case-insensitive)
-        if echo "$id,$name,$path,$date,$size,$type,$perms,$owner" | grep -iq "$pattern"; then
-            echo "-----------------------   ---------------------"
-            echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
+
+        if echo "$name,$type" | grep -iq "$pattern"; then
+            printf "%0.s-" {1..140}; echo
+            printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
+                        "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
             results_found=1
         fi
     done < "$METADATA_FILE"
@@ -390,7 +387,8 @@ main() {
             restore_file "$2"
             ;;
         search)
-            search_recycled "$2"
+            shift
+            search_recycled "$@"
             ;;
         empty)
             shift
