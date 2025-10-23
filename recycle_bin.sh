@@ -180,20 +180,14 @@ restore_file() {
     if [ -z "$file_id" ]; then
     	echo -e "${RED}Error: No file ID specified${NC}"
     	return 1
-    fi
-
-	if []
-
-	
-
-	
+    fi	
     # Your code here
     # Hint: Search metadata for matching ID
     # Hint: Get original path from metadata
     # Hint: Check if original path exists
     # Hint: Move file back and restore permissions
     # Hint: Remove entry from metadata
-return 0
+    return 0
 }
 
 
@@ -267,12 +261,6 @@ empty_recyclebin() {
 # Parameters: $1 - search pattern
 # Returns: 0 on success
 #################################################
-#################################################
-# Function: search_recycled
-# Description: Searches for files in recycle bin
-# Parameters: $1 - search pattern
-# Returns: 0 on success
-#################################################
 search_recycled() {
     local pattern="$1"
     if [ -z "$pattern" ]; then
@@ -285,7 +273,7 @@ search_recycled() {
     results_found=0
     while IFS=',' read -r id name path date size type perms owner; do
         # Skip the header line
-        if [ "$id" = "ID" ]; then
+        if [ "$name" = "ORIGINAL_NAME" ]; then
             continue
         fi
 
