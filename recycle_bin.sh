@@ -150,15 +150,15 @@ list_recycled() {
     esac
 
     # Imprime o cabeçalho da tabela
-    printf "%-25s %-20s %-10s %-19s %-10s %-8s %-10s %-10s\n" \
-        "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE(B)" "PERMS" "OWNER" "PATH"
-    printf "%0.s-" {1..120}; echo
+    printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
+        "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "PATH"
+    printf "%0.s-" {1..140}; echo
 
     # Lê o ficheiro metadata (sem o cabeçalho) e ordena conforme a flag
     tail -n +2 "$METADATA_FILE" \
         | sort -t ',' -k"$sort_col","$sort_col" \
         | while IFS=',' read -r id name path date size type perms owner; do
-            printf "%-25s %-20s %-10s %-19s %-10s %-8s %-10s %-10s\n" \
+            printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
                 "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
         done
 
@@ -174,6 +174,9 @@ list_recycled() {
 # Parameters: $1 - unique ID of file to restore
 # Returns: 0 on success, 1 on failure
 #################################################
+<<<<<<< HEAD
+
+=======
 restore_file() {
     # TODO: Implement this function
     local file_id="$1"
@@ -189,6 +192,7 @@ restore_file() {
     # Hint: Remove entry from metadata
     return 0
 }
+>>>>>>> origin/main
 
 
 #################################################
