@@ -120,15 +120,11 @@ delete_file() {
 #################################################
 
 list_recycled() {
-    echo "=== Recycle Bin Content ==="
-
-    # Verifica se o ficheiro metadata existe e não está vazio
-    if [ ! -s "$METADATA_FILE" ]; then
+    if [ $(tail -n +2 "$METADATA_FILE" | wc -l) -eq 0 ]; then
         echo "The Recycle Bin is empty."
         return 0
     fi
 
-    # Determina o critério de ordenação (por defeito: name)
     local sort_by="name"
     if [[ "$1" == "--sort" && -n "$2" ]]; then
         case "$2" in
@@ -140,26 +136,26 @@ list_recycled() {
         esac
     fi
 
-    # Escolhe o campo de ordenação (coluna correspondente)
-    # 1:ID 2:NAME 3:PATH 4:DATE 5:SIZE 6:TYPE 7:PERMS 8:OWNER
     local sort_col
+    local sort_opts=""
     case "$sort_by" in
         name) sort_col=2 ;;
         date) sort_col=4 ;;
-        size) sort_col=5 ;;
+        size) sort_col=5; sort_opts="-n" ;;
     esac
 
-    # Imprime o cabeçalho da tabela
-    printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
-        "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "PATH"
-    printf "%0.s-" {1..140}; echo
+    # Print table header
+    echo "=== Recycle Bin Content ==="
+    printf "%-20s %-20s %-25s %-25s %-10s %-10s %-10s %-10s\n" \
+        "ID" "NAME" "PATH" "DELETION_DATE" "SIZE" "TYPE" "PERMS" "OWNER"
+    printf "%0.s-" {1..150}; echo
 
-    # Lê o ficheiro metadata (sem o cabeçalho) e ordena conforme a flag
+    # Skip comment + CSV header (lines 1 and 2)
     tail -n +2 "$METADATA_FILE" \
-        | sort -t ',' -k"$sort_col","$sort_col" \
+        | sort -t ',' $sort_opts -k"$sort_col","$sort_col" \
         | while IFS=',' read -r id name path date size type perms owner; do
-            printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
-                "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
+            printf "%-20s %-20s %-25s %-25s %-10s %-10s %-10s %-10s\n" \
+                "$id" "$name" "$path" "$date" "$size" "$type" "$perms" "$owner"
         done
 
     echo
@@ -168,22 +164,32 @@ list_recycled() {
 }
 
 
+
+
 #################################################
 # Function: restore_file
 # Description: Restores file from recycle bin
 # Parameters: $1 - unique ID of file to restore
 # Returns: 0 on success, 1 on failure
 #################################################
-<<<<<<< HEAD
-
-=======
 restore_file() {
     # TODO: Implement this function
     local file_id="$1"
     if [ -z "$file_id" ]; then
     	echo -e "${RED}Error: No file ID specified${NC}"
     	return 1
-    fi	
+    elif [ ! -f "$METADATA_FILE" ]; then
+    	echo -e "${RED}Error: Metadata file not found${NC}"
+    	return 1
+    else
+    	echo "Restoring file with ID: $id"
+        VALUE=$(awk -F',' -v $id = $id '1 == id {print $3}' $METADATA_FILE))
+        echo "$VALUE"
+
+    fi
+
+
+
     # Your code here
     # Hint: Search metadata for matching ID
     # Hint: Get original path from metadata
@@ -192,7 +198,6 @@ restore_file() {
     # Hint: Remove entry from metadata
     return 0
 }
->>>>>>> origin/main
 
 
 #################################################
@@ -281,9 +286,9 @@ search_recycled() {
             continue
         fi
 
-        # Check if any field matches the pattern (case-insensitive)
+        # Check if any field maches the pattern (case-insensitive)
         if echo "$id,$name,$path,$date,$size,$type,$perms,$owner" | grep -iq "$pattern"; then
-            echo "-----------------------   ---------------------"
+            printf "%0.s-" {1..175}; echo
             echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
             results_found=1
         fi
@@ -343,7 +348,8 @@ main() {
             delete_file "$@"
             ;;
         list)
-            list_recycled
+            shift
+            list_recycled "$@"
             ;;
         restore)
             restore_file "$2"
