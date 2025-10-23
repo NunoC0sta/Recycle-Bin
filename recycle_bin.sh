@@ -120,11 +120,15 @@ delete_file() {
 #################################################
 
 list_recycled() {
-    if [ $(tail -n +2 "$METADATA_FILE" | wc -l) -eq 0 ]; then
+    echo "=== Recycle Bin Content ==="
+
+    # Verifica se o ficheiro metadata existe e não está vazio
+    if [ ! -s "$METADATA_FILE" ]; then
         echo "The Recycle Bin is empty."
         return 0
     fi
 
+    # Determina o critério de ordenação (por defeito: name)
     local sort_by="name"
     if [[ "$1" == "--sort" && -n "$2" ]]; then
         case "$2" in
@@ -136,34 +140,32 @@ list_recycled() {
         esac
     fi
 
+    # Escolhe o campo de ordenação (coluna correspondente)
+    # 1:ID 2:NAME 3:PATH 4:DATE 5:SIZE 6:TYPE 7:PERMS 8:OWNER
     local sort_col
-    local sort_opts=""
     case "$sort_by" in
         name) sort_col=2 ;;
         date) sort_col=4 ;;
-        size) sort_col=5; sort_opts="-n" ;;
+        size) sort_col=5 ;;
     esac
 
-    # Print table header
-    echo "=== Recycle Bin Content ==="
-    printf "%-20s %-20s %-25s %-25s %-10s %-10s %-10s %-10s\n" \
-        "ID" "NAME" "PATH" "DELETION_DATE" "SIZE" "TYPE" "PERMS" "OWNER"
-    printf "%0.s-" {1..150}; echo
+    # Imprime o cabeçalho da tabela
+    printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
+        "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "PATH"
+    printf "%0.s-" {1..140}; echo
 
-    # Skip comment + CSV header (lines 1 and 2)
+    # Lê o ficheiro metadata (sem o cabeçalho) e ordena conforme a flag
     tail -n +2 "$METADATA_FILE" \
-        | sort -t ',' $sort_opts -k"$sort_col","$sort_col" \
+        | sort -t ',' -k"$sort_col","$sort_col" \
         | while IFS=',' read -r id name path date size type perms owner; do
-            printf "%-20s %-20s %-25s %-25s %-10s %-10s %-10s %-10s\n" \
-                "$id" "$name" "$path" "$date" "$size" "$type" "$perms" "$owner"
+            printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
+                "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
         done
 
     echo
     echo "Sorted by: $sort_by"
     return 0
 }
-
-
 
 
 #################################################
@@ -178,18 +180,7 @@ restore_file() {
     if [ -z "$file_id" ]; then
     	echo -e "${RED}Error: No file ID specified${NC}"
     	return 1
-    elif [ ! -f "$METADATA_FILE" ]; then
-    	echo -e "${RED}Error: Metadata file not found${NC}"
-    	return 1
-    else
-    	echo "Restoring file with ID: $id"
-        VALUE=$(awk -F',' -v $id = $id '1 == id {print $3}' $METADATA_FILE))
-        echo "$VALUE"
-
-    fi
-
-
-
+    fi	
     # Your code here
     # Hint: Search metadata for matching ID
     # Hint: Get original path from metadata
@@ -271,6 +262,49 @@ empty_recyclebin() {
 # Returns: 0 on success
 #################################################
 search_recycled() {
+    # Se o primeiro argumento for "date", ativa o modo de pesquisa por intervalo de datas
+    if [ "$1" = "date" ]; then
+        local start_date="$2"
+        local end_date="$3"
+
+        if [ -z "$start_date" ] || [ -z "$end_date" ]; then
+            echo -e "${RED}Error: Please provide start and end dates${NC}"
+            echo "Usage: $0 search date 'YYYY-MM-DD HH:MM:SS' 'YYYY-MM-DD HH:MM:SS'"
+            return 1
+        fi
+
+        echo "Results for deletion dates between '$start_date' and '$end_date':"
+        results_found=0
+
+        # Converter as datas em timestamps (para comparação numérica)
+        local start_ts end_ts file_ts
+        start_ts=$(date -d "$start_date" +%s 2>/dev/null)
+        end_ts=$(date -d "$end_date" +%s 2>/dev/null)
+
+        if [ -z "$start_ts" ] || [ -z "$end_ts" ]; then
+            echo -e "${RED}Error: Invalid date format.${NC}"
+            echo "Use format: YYYY-MM-DD HH:MM:SS"
+            return 1
+        fi
+
+        # Ler metadados e comparar datas
+        tail -n +2 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
+            file_ts=$(date -d "$date" +%s 2>/dev/null)
+            if [ "$file_ts" -ge "$start_ts" ] && [ "$file_ts" -le "$end_ts" ]; then
+                echo "-----------------------   ---------------------"
+                echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
+                results_found=1
+            fi
+        done
+
+        if [ "$results_found" -eq 0 ]; then
+            echo "No results found."
+        fi
+
+        return 0
+    fi
+
+    # --- comportamento normal (procura por padrão em qualquer campo) ---
     local pattern="$1"
     if [ -z "$pattern" ]; then
         echo -e "${RED}Error: No search pattern specified${NC}"
@@ -284,15 +318,13 @@ search_recycled() {
         # Skip the header line
         if [ "$name" = "ORIGINAL_NAME" ]; then
             continue
-
         elif [ "$name" = "TYPE" ]; then
             continue
         fi
         
-
-        # Check if any field maches the pattern (case-insensitive)
+        # Check if any field matches the pattern (case-insensitive)
         if echo "$id,$name,$path,$date,$size,$type,$perms,$owner" | grep -iq "$pattern"; then
-            printf "%0.s-" {1..175}; echo
+            echo "-----------------------   ---------------------"
             echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
             results_found=1
         fi
@@ -352,8 +384,7 @@ main() {
             delete_file "$@"
             ;;
         list)
-            shift
-            list_recycled "$@"
+            list_recycled
             ;;
         restore)
             restore_file "$2"
