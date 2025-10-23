@@ -94,7 +94,7 @@ delete_file() {
             find "$file" -mindepth 1 | while read -r sub_item; do
             delete_file "$sub_item"
             done
-            echo "$id,$name,$path,$delete_date,$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
+            echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> "$METADATA_FILE"
             mv "$file" "$FILES_DIR/$id.$type"
             
         fi
@@ -128,11 +128,7 @@ list_recycled() {
 
     # Lê o ficheiro metadata linha a linha, ignora o cabeçalho
     tail -n +2 "$METADATA_FILE" | while IFS=',' read -r id nome caminho data tamanho tipo permissoes dono; do
-        echo "ID: $id"
-        echo "Name: $nome"
-        echo "Date: $data"
-        echo "Size: $tamanho"
-        echo "Type: $tipo"
+        echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
         echo "------------------------------"
     done
 
@@ -146,7 +142,14 @@ list_recycled() {
 # Returns: 0 on success, 1 on failure
 #################################################
 restore_file() {
+    # TODO: Implement this function
+    local file_id="$1"
+    if [ -z "$file_id" ]; then
+    	echo -e "${RED}Error: No file ID specified${NC}"
+    	return 1
+    fi
 
+	if []
 
 	
 
@@ -198,37 +201,14 @@ empty_recyclebin() {
         read -rp "(y/n): " confirm
         case "$confirm" in
             [Yy]*)
-                for key in "$@"; do
-                    # Try to find by ID first
-                    match=$(grep "^$key," "$METADATA_FILE")
-                    
-                    # If not found, try searching by OriginalName (field 2)
-                    if [ -z "$match" ]; then
-                        match=$(awk -F',' -v name="$key" '$2==name {print $0}' "$METADATA_FILE")
-                    fi
-
-                    if [ -z "$match" ]; then
-                        echo "No metadata found for ID or name: $key"
-                        continue
-                    fi
-
-                    # Extract ID and type
-                    id=$(echo "$match" | cut -d',' -f1)
-                    type=$(echo "$match" | cut -d',' -f6)
-                    file_path="$FILES_DIR/$id.$type"
-
-                    if [ -e "$file_path" ]; then
-                        echo "Deleting $file_path permanently..."
-                        rm -rf "$file_path"
-                    else
-                        echo "File not found in recycle bin: $file_path"
-                    fi
-
-                    # Remove the metadata line
-                    grep -v "^$id," "$METADATA_FILE" > "$METADATA_FILE.tmp"
+                for pattern in "$@"; do
+                    echo "Deleting items matching pattern: $pattern"
+                    rm -rf "$FILES_DIR"/$pattern*
+                    # Remove matching entries from metadata
+                    grep -v "^$pattern" "$METADATA_FILE" > "$METADATA_FILE.tmp"
                     mv "$METADATA_FILE.tmp" "$METADATA_FILE"
                 done
-                echo "Specified items permanently deleted."
+                echo "Specified items deleted."
                 ;;
             [Nn]*)
                 echo "Operation cancelled."
@@ -240,8 +220,8 @@ empty_recyclebin() {
     else
         echo "Error: Invalid arguments"
         return 1
-    fi
 
+    fi
 
     return 0
 }
