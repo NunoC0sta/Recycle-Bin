@@ -284,7 +284,11 @@ search_recycled() {
         # Skip the header line
         if [ "$name" = "ORIGINAL_NAME" ]; then
             continue
+
+        elif [ "$name" = "TYPE" ]; then
+            continue
         fi
+        
 
         # Check if any field maches the pattern (case-insensitive)
         if echo "$id,$name,$path,$date,$size,$type,$perms,$owner" | grep -iq "$pattern"; then
