@@ -117,6 +117,8 @@ delete_file() {
 # Parameters: None
 # Returns: 0 on success
 #################################################
+#################################################
+
 list_recycled() {
     echo "=== Recycle Bin Content ==="
 
@@ -126,14 +128,45 @@ list_recycled() {
         return 0
     fi
 
-    # Lê o ficheiro metadata linha a linha, ignora o cabeçalho
-    tail -n +2 "$METADATA_FILE" | while IFS=',' read -r id nome caminho data tamanho tipo permissoes dono; do
-        echo "ID: $id | Name: $name | Original path: $path | Deletion date: $date | Size: $size bytes | Type: $type | Permissions: $perms | Owner: $owner"
-        echo "------------------------------"
-    done
+    # Determina o critério de ordenação (por defeito: name)
+    local sort_by="name"
+    if [[ "$1" == "--sort" && -n "$2" ]]; then
+        case "$2" in
+            name|date|size) sort_by="$2" ;;
+            *)
+                echo -e "${RED}Invalid sort option. Use: name, date or size.${NC}"
+                return 1
+                ;;
+        esac
+    fi
 
+    # Escolhe o campo de ordenação (coluna correspondente)
+    # 1:ID 2:NAME 3:PATH 4:DATE 5:SIZE 6:TYPE 7:PERMS 8:OWNER
+    local sort_col
+    case "$sort_by" in
+        name) sort_col=2 ;;
+        date) sort_col=4 ;;
+        size) sort_col=5 ;;
+    esac
+
+    # Imprime o cabeçalho da tabela
+    printf "%-25s %-20s %-10s %-19s %-10s %-8s %-10s %-10s\n" \
+        "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE(B)" "PERMS" "OWNER" "PATH"
+    printf "%0.s-" {1..120}; echo
+
+    # Lê o ficheiro metadata (sem o cabeçalho) e ordena conforme a flag
+    tail -n +2 "$METADATA_FILE" \
+        | sort -t ',' -k"$sort_col","$sort_col" \
+        | while IFS=',' read -r id name path date size type perms owner; do
+            printf "%-25s %-20s %-10s %-19s %-10s %-8s %-10s %-10s\n" \
+                "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
+        done
+
+    echo
+    echo "Sorted by: $sort_by"
     return 0
 }
+
 
 #################################################
 # Function: restore_file
