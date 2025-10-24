@@ -109,7 +109,7 @@ delete_file() {
             delete_file "$sub_item"
             done
             echo "$id,$name,$path,$delete_date,$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
-            mv "$file" "$FILES_DIR/$id.$type"
+            mv "$file" "$FILES_DIR/$id"
             
         fi
             
@@ -188,23 +188,61 @@ list_recycled() {
 # Returns: 0 on success, 1 on failure
 #################################################
 restore_file() {
-    # TODO: Implement this function
     local file_id="$1"
-    if [ -z "$file_id" ]; then
-    	echo -e "${RED}Error: No file ID specified${NC}"
-    	return 1
 
+    if [ -z "$file_id" ]; then
+        echo -e "${RED}Error: No file ID specified${NC}"
+        return 1
     fi
 
-    
-    # Your code here
-    # Hint: Search metadata for matching ID
-    # Hint: Get original path from metadata
-    # Hint: Check if original path exists
-    # Hint: Move file back and restore permissions
-    # Hint: Remove entry from metadata
-    return 1
+    # Find the metadata line for the given ID
+    local metadata
+    metadata=$(grep "^$file_id," "$METADATA_FILE")
+
+    if [ -z "$metadata" ]; then
+        echo -e "${RED}Error: No file found with ID '$file_id'${NC}"
+        return 1
+    fi
+
+    # Split metadata fields using IFS
+    IFS=',' read -r id name original_path deletion_date size type perms owner <<< "$metadata"
+
+    # Check whether the given ID corresponds to a directory or a file
+    if [[ "$type" == "DIR" ]]; then
+        # Restore directory
+        mv "$FILES_DIR/$id" "$original_path"
+        echo "Directory restored: $original_path"
+    else
+        # Restore file
+        mkdir -p "$(dirname "$original_path")"
+
+        recycle_path="$FILES_DIR/$id.$type"
+        if [ ! -e "$recycle_path" ]; then
+            echo -e "${YELLOW}Warning: File not found in recycle bin: $recycle_path${NC}"
+            return 1
+        fi
+
+        # Handle conflict
+        if [ -e "$original_path" ]; then
+            echo -e "${YELLOW}Warning: File already exists at original location: $original_path${NC}"
+            read -rp "Overwrite? (y/n): " choice
+            case "$choice" in
+                [Yy]*) ;;
+                *) echo "Skipping $original_path"; return 0 ;;
+            esac
+        fi
+
+        mv "$recycle_path" "$original_path"
+        echo "File restored: $original_path"
+    fi
+
+    # Remove metadata entry
+    grep -v "^$id," "$METADATA_FILE" > "$METADATA_FILE.tmp" && mv "$METADATA_FILE.tmp" "$METADATA_FILE"
+
+    return 0
 }
+
+
 
 
 #################################################
