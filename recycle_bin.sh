@@ -10,7 +10,8 @@
 RECYCLE_BIN_DIR="$HOME/.recycle_bin"
 FILES_DIR="$RECYCLE_BIN_DIR/files"
 METADATA_FILE="$RECYCLE_BIN_DIR/metadata.db"
-CONFIG_FILE="$RECYCLE_BIN_DIR/config"
+CONFIG_FILE="$RECYCLE_BIN_DIR/config.cfg"
+LOG_FILE="$RECYCLE_BIN_DIR/log.txt"
 # Color codes for output (optional)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,16 +26,29 @@ NC='\033[0m' # No Color
 # Returns: 0 on success, 1 on failure
 #################################################
 initialize_recyclebin() {
-if [ ! -d "$RECYCLE_BIN_DIR" ]; then
-mkdir -p "$FILES_DIR"
-touch "$METADATA_FILE"
-echo "# Recycle Bin Metadata" > "$METADATA_FILE"
-echo "ID,ORIGINAL_NAME,ORIGINAL_PATH,DELE-
-TION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER" >> "$METADATA_FILE"
-echo "Recycle bin initialized at $RECYCLE_BIN_DIR"
-return 0
-fi
-return 0
+    # Create recycle bin directory if it doesn't exist
+    if [ ! -d "$RECYCLE_BIN_DIR" ]; then
+        mkdir -p "$RECYCLE_BIN_DIR"
+        mkdir -p "$FILES_DIR"
+
+        # Initialize metadata file
+        touch "$METADATA_FILE"
+        echo "# Recycle Bin Metadata" > "$METADATA_FILE"
+        echo "ID,ORIGINAL_NAME,ORIGINAL_PATH,DELETION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER" >> "$METADATA_FILE"
+
+        # Initialize config file
+        touch "$CONFIG_FILE"
+        echo "# Recycle Bin Configuration" > "$CONFIG_FILE"
+        echo "MAX_DAYS=30" >> "$CONFIG_FILE"         # default max days
+        echo "MAX_FILE_SIZE=10485760" >> "$CONFIG_FILE"  # default max file size in bytes (10MB)
+
+        # Initialize empty log file
+        touch "$LOG_FILE"
+
+        echo "Recycle bin initialized at $RECYCLE_BIN_DIR"
+        return 0
+    fi
+    return 0
 }
 
 
@@ -122,11 +136,12 @@ delete_file() {
 list_recycled() {
     echo "=== Recycle Bin Content ==="
 
-    # Verifica se o ficheiro metadata existe e não está vazio
-    if [ ! -s "$METADATA_FILE" ]; then
+    # Check if metadata has any entries beyond the first two lines
+    if [ "$(tail -n +3 "$METADATA_FILE" | wc -l)" -eq 0 ]; then
         echo "The Recycle Bin is empty."
         return 0
     fi
+
 
     # Determina o critério de ordenação (por defeito: name)
     local sort_by="name"
@@ -155,7 +170,7 @@ list_recycled() {
     printf "%0.s-" {1..140}; echo
 
     # Lê o ficheiro metadata (sem o cabeçalho) e ordena conforme a flag
-    tail -n +2 "$METADATA_FILE" \
+    tail -n +3 "$METADATA_FILE" \
         | sort -t ',' -k"$sort_col","$sort_col" \
         | while IFS=',' read -r id name path date size type perms owner; do
             printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
@@ -180,14 +195,17 @@ restore_file() {
     if [ -z "$file_id" ]; then
     	echo -e "${RED}Error: No file ID specified${NC}"
     	return 1
-    fi	
+        
+    fi
+
+    
     # Your code here
     # Hint: Search metadata for matching ID
     # Hint: Get original path from metadata
     # Hint: Check if original path exists
     # Hint: Move file back and restore permissions
     # Hint: Remove entry from metadata
-    return 0
+    return 1
 }
 
 
@@ -198,12 +216,24 @@ restore_file() {
 # Returns: 0 on success
 #################################################
 empty_recyclebin() {
-    # Arguments:
-    #   [ids or patterns...] - optional, specify files to delete selectively
+    # Use AUTO_CONFIRM env var (expected values: "true" or "false")
+    local auto_confirm="${AUTO_CONFIRM:-false}"
+    # If stdin is not a terminal, assume non-interactive; allow auto confirm
+    local noninteractive=false
+    if [ ! -t 0 ]; then
+        noninteractive=true
+    fi
 
+    # No arguments → empty the entire recycle bin
     if [ "$#" -eq 0 ]; then
         echo "Delete all items in recycle bin permanently?"
-        read -rp "(y/n): " confirm
+
+        if [ "$auto_confirm" = true ]; then
+            confirm="y"
+        else
+            read -rp "(y/n): " confirm
+        fi
+
         case "$confirm" in
             [Yy]*)
                 echo "Deleting all files..."
@@ -223,7 +253,9 @@ empty_recyclebin() {
                 echo "Invalid input. Please enter y or n."
                 ;;
         esac
-    elif [ "$#" -gt 0 ]; then
+
+    # If arguments are given → delete only specified items
+    else
         echo "Delete specified items permanently?"
         read -rp "(y/n): " confirm
         case "$confirm" in
@@ -244,14 +276,11 @@ empty_recyclebin() {
                 echo "Invalid input. Please enter y or n."
                 ;;
         esac
-    else
-        echo "Error: Invalid arguments"
-        return 1
-
     fi
 
     return 0
 }
+
 
 
 
@@ -286,7 +315,7 @@ search_recycled() {
             return 1
         fi
 
-        tail -n +2 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
+        tail -n +3 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
             file_ts=$(date -d "$date" +%s 2>/dev/null)
             if [ "$file_ts" -ge "$start_ts" ] && [ "$file_ts" -le "$end_ts" ]; then
                 printf "%0.s-" {1..140}; echo

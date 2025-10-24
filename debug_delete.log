@@ -1,0 +1,35 @@
++ RECYCLE_BIN_DIR=/home/nuno/.recycle_bin
++ FILES_DIR=/home/nuno/.recycle_bin/files
++ METADATA_FILE=/home/nuno/.recycle_bin/metadata.db
++ CONFIG_FILE=/home/nuno/.recycle_bin/config
++ RED='\033[0;31m'
++ GREEN='\033[0;32m'
++ YELLOW='\033[1;33m'
++ NC='\033[0m'
++ main delete test_data/test.txt
++ initialize_recyclebin
++ '[' '!' -d /home/nuno/.recycle_bin ']'
++ mkdir -p /home/nuno/.recycle_bin/files
++ touch /home/nuno/.recycle_bin/metadata.db
++ echo '# Recycle Bin Metadata'
++ echo ID,ORIGINAL_NAME,ORIGINAL_PATH,DELETION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER
++ echo 'Recycle bin initialized at /home/nuno/.recycle_bin'
+Recycle bin initialized at /home/nuno/.recycle_bin
++ return 0
++ case "$1" in
++ shift
++ delete_file test_data/test.txt
++ local id
++ local name
++ local path
++ local delete_date
++ local size
++ local type
++ local permissions
++ local owner
++ local rel_path=/home/nuno/.recycle_bin/files
++ '[' 1 -eq 0 ']'
++ '[' '!' -e test_data/test.txt ']'
++ echo 'Error: '\''test_data/test.txt'\'' does not exist'
+Error: 'test_data/test.txt' does not exist
++ return 1

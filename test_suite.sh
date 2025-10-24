@@ -4,6 +4,10 @@ SCRIPT="./recycle_bin.sh"
 TEST_DIR="test_data"
 PASS=0
 FAIL=0
+
+#Auto Confirm for the Empty Recycle Bin Tests
+export AUTO_CONFIRM="true"
+
 # Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -20,10 +24,10 @@ teardown() {
 assert_success() {
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ PASS${NC}: $1"
-(       (PASS++))
+        ((PASS++))
     else
         echo -e "${RED}✗ FAIL${NC}: $1"
-    ((FAIL++))
+        ((FAIL++))
     fi
 }
 assert_fail() {
