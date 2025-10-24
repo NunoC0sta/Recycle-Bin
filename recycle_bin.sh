@@ -131,8 +131,6 @@ delete_file() {
 # Parameters: None
 # Returns: 0 on success
 #################################################
-#################################################
-
 list_recycled() {
     echo "=== Recycle Bin Content ==="
 
@@ -195,7 +193,7 @@ restore_file() {
     if [ -z "$file_id" ]; then
     	echo -e "${RED}Error: No file ID specified${NC}"
     	return 1
-        
+
     fi
 
     
@@ -218,16 +216,18 @@ restore_file() {
 empty_recyclebin() {
     # Use AUTO_CONFIRM env var (expected values: "true" or "false")
     local auto_confirm="${AUTO_CONFIRM:-false}"
+
     # If stdin is not a terminal, assume non-interactive; allow auto confirm
     local noninteractive=false
     if [ ! -t 0 ]; then
         noninteractive=true
     fi
 
-    # No arguments → empty the entire recycle bin
+    # if there are not arguments empty the entire recycle bin
     if [ "$#" -eq 0 ]; then
         echo "Delete all items in recycle bin permanently?"
 
+        #Auto Confirm so the Test can run without user interaction, if ran manually it will ask for confirmation
         if [ "$auto_confirm" = true ]; then
             confirm="y"
         else
@@ -236,15 +236,20 @@ empty_recyclebin() {
 
         case "$confirm" in
             [Yy]*)
+                #Shows the List of files being deleted
                 echo "Deleting all files..."
                 echo "List of files being deleted:"
                 list_recycled
+
+                # Get count and size before deletion
                 count=$(find "$FILES_DIR" -type f | wc -l)
                 size=$(du -ch "$FILES_DIR" | tail -n 1 | awk '{print $1}')
+                # Deletion of all files and directories inside the files directory
                 rm -rf "$FILES_DIR"/*
                 echo "Recycle Bin emptied ($count files, total size $size)."
                 # Reset metadata file
-                echo "ID,ORIGINAL_NAME,ORIGINAL_PATH,DELETION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER" > "$METADATA_FILE"
+                echo "# Recycle Bin Metadata" > "$METADATA_FILE"
+                echo "ID,ORIGINAL_NAME,ORIGINAL_PATH,DELETION_DATE,FILE_SIZE,FILE_TYPE,PERMISSIONS,OWNER" >> "$METADATA_FILE"
                 ;;
             [Nn]*)
                 echo "Operation cancelled."
@@ -254,20 +259,43 @@ empty_recyclebin() {
                 ;;
         esac
 
-    # If arguments are given → delete only specified items
+    # If arguments are given delete only specified items
     else
         echo "Delete specified items permanently?"
         read -rp "(y/n): " confirm
         case "$confirm" in
             [Yy]*)
-                for pattern in "$@"; do
-                    echo "Deleting items matching pattern: $pattern"
-                    rm -rf "$FILES_DIR"/$pattern*
-                    # Remove matching entries from metadata
-                    grep -v "^$pattern" "$METADATA_FILE" > "$METADATA_FILE.tmp"
+                for key in "$@"; do
+                    # Try to find by ID first
+                    match=$(grep "^$key," "$METADATA_FILE")
+                    
+                    # If not found, try searching by OriginalName
+                    if [ -z "$match" ]; then
+                        match=$(awk -F',' -v name="$key" '$2==name {print $0}' "$METADATA_FILE")
+                    fi
+
+                    if [ -z "$match" ]; then
+                        echo "No metadata found for ID or name: $key"
+                        continue
+                    fi
+
+                    # Extract ID and type
+                    id=$(echo "$match" | cut -d',' -f1)
+                    type=$(echo "$match" | cut -d',' -f6)
+                    file_path="$FILES_DIR/$id.$type"
+
+                    if [ -e "$file_path" ]; then
+                        echo "Deleting $file_path permanently..."
+                        rm -rf "$file_path"
+                    else
+                        echo "File not found in recycle bin: $file_path"
+                    fi
+
+                    # Remove the metadata line
+                    grep -v "^$id," "$METADATA_FILE" > "$METADATA_FILE.tmp"
                     mv "$METADATA_FILE.tmp" "$METADATA_FILE"
                 done
-                echo "Specified items deleted."
+                echo "Specified items permanently deleted."
                 ;;
             [Nn]*)
                 echo "Operation cancelled."
