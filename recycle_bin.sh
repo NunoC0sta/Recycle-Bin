@@ -39,8 +39,8 @@ initialize_recyclebin() {
         # Initialize config file
         touch "$CONFIG_FILE"
         echo "# Recycle Bin Configuration" > "$CONFIG_FILE"
-        echo "MAX_DAYS=30" >> "$CONFIG_FILE"         # default max days
-        echo "MAX_FILE_SIZE=10485760" >> "$CONFIG_FILE"  # default max file size in bytes (10MB)
+        echo "MAX_SIZE_MB=1024" >> "$CONFIG_FILE"         # default Max Size in MB
+        echo "RETENTION_DAYS=30" >> "$CONFIG_FILE"  # default Retention Time Limit until permanent deletion in days
 
         # Initialize empty log file
         touch "$LOG_FILE"
@@ -67,62 +67,95 @@ echo "${timestamp}_${random}"
 
 #################################################
 # Function: delete_file
-# Description: Moves file/directory to recycle bin
+# Description: Moves file/directory to recycle bin with error handling
 # Parameters: $@ - All files/directories being passed to the function
 # Returns: 0 on success, 1 on failure
 #################################################
 delete_file() {
-	local id
-	local name
-	local path
-	local delete_date
-	local size 
-	local type 
-	local permissions 
-	local owner
+    local id name path delete_date size type permissions owner
     local rel_path=$FILES_DIR
 
+    # No arguments
     if [ "$#" -eq 0 ]; then
         echo "Error: No file specified"
-        return 1
-    fi
-
-    if [ ! -e "$1" ]; then
-        echo "Error: '$1' does not exist"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | No file specified" >> "$LOG_FILE"
         return 1
     fi
 
     for file in "$@"; do
+        # Prevent deleting recycle bin itself
+        if [[ "$file" == "$RECYCLE_BIN_DIR"* ]]; then
+            echo -e "${RED}Error: Cannot delete the recycle bin itself (${file})${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | Attempted to delete recycle bin itself: '$file'" >> "$LOG_FILE"
+            continue
+        fi
 
+        # File doesn't exist
+        if [ ! -e "$file" ]; then
+            echo -e "${RED}Error: '$file' does not exist${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | '$file' does not exist" >> "$LOG_FILE"
+            continue
+        fi
+
+        # Permission check (read + write)
+        if [ ! -r "$file" ] || [ ! -w "$file" ]; then
+            echo -e "${RED}Error: No read/write permission for '$file'${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | Permission denied for '$file'" >> "$LOG_FILE"
+            continue
+        fi
+
+        # Get size of the file (for disk space check)
+        size=$(du -sk "$file" 2>/dev/null | awk '{print $1}')
+        available=$(df -k "$FILES_DIR" | tail -1 | awk '{print $4}')
+
+        if [ "$available" -lt "$size" ]; then
+            echo -e "${RED}Error: Insufficient disk space in recycle bin${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | Not enough space to move '$file' (needed ${size}KB, available ${available}KB)" >> "$LOG_FILE"
+            continue
+        fi
+
+        # Gather file info
         id=$(generate_unique_id)
         name=$(basename "$file")
         path=$(realpath "$file")
         delete_date=$(date "+%Y-%m-%d %H:%M:%S")
-        size=$(stat -c %s "$file")
         type=$(basename "$file" | sed 's/.*\.//')
         permissions=$(stat -c %A "$file")
         owner=$(stat -c %U "$file")
 
-        #Checks if the path of the argument currently being utilized by the function is a directory
+        # Handle directory
         if [[ -d "$file" ]]; then
             find "$file" -mindepth 1 | while read -r sub_item; do
-            delete_file "$sub_item"
+                delete_file "$sub_item"
             done
             echo "$id,$name,$path,$delete_date,$size,DIR,$permissions,$owner" >> "$METADATA_FILE"
-            mv "$file" "$FILES_DIR/$id"
-            
+            if mv "$file" "$FILES_DIR/$id" 2>/dev/null; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | SUCCESS | Directory '$path' -> ID: $id" >> "$LOG_FILE"
+            else
+                echo -e "${RED}Error: Failed to move directory '$file'${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | Failed to move directory '$file'" >> "$LOG_FILE"
+            fi
+            continue
         fi
-            
 
+        # Handle file
         if [ -f "$file" ]; then
             echo "$id,$name,$path,$delete_date,$size,$type,$permissions,$owner" >> "$METADATA_FILE"
-            mv "$file" "$FILES_DIR/$id.$type"
+            if mv "$file" "$FILES_DIR/$id.$type" 2>/dev/null; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | SUCCESS | File '$path' -> ID: $id.$type" >> "$LOG_FILE"
+            else
+                echo -e "${RED}Error: Failed to move file '$file'${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | Failed to move file '$file'" >> "$LOG_FILE"
+            fi
+        else
+            echo -e "${RED}Error: Unknown item type '$file'${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | DELETE | ERROR | Unknown item type '$file'" >> "$LOG_FILE"
         fi
-
     done
-	
-	return 0
+
+    return 0
 }
+
 
 
 #################################################
@@ -188,55 +221,162 @@ list_recycled() {
 # Returns: 0 on success, 1 on failure
 #################################################
 restore_file() {
-    local file_id="$1"
+    local input="$1"
 
-    if [ -z "$file_id" ]; then
-        echo -e "${RED}Error: No file ID specified${NC}"
+    if [ -z "$input" ]; then
+        echo -e "${RED}Error: No file ID or filename specified${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | No file ID or name specified" >> "$LOG_FILE"
         return 1
     fi
 
-    # Find the metadata line for the given ID
+    # Try to find a match by ID first
     local metadata
-    metadata=$(grep "^$file_id," "$METADATA_FILE")
+    metadata=$(grep "^$input," "$METADATA_FILE")
+
+    # If not found by ID, try to find by filename (case-insensitive)
+    if [ -z "$metadata" ]; then
+        metadata=$(awk -F',' -v name="$input" 'tolower($2) == tolower(name) {print; exit}' "$METADATA_FILE")
+    fi
 
     if [ -z "$metadata" ]; then
-        echo -e "${RED}Error: No file found with ID '$file_id'${NC}"
+        echo -e "${RED}Error: No file found with ID or name '$input'${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | No file found for ID or name '$input'" >> "$LOG_FILE"
         return 1
     fi
 
-    # Split metadata fields using IFS
+    # Split metadata fields
     IFS=',' read -r id name original_path deletion_date size type perms owner <<< "$metadata"
 
-    # Check whether the given ID corresponds to a directory or a file
-    if [[ "$type" == "DIR" ]]; then
-        # Restore directory
-        mv "$FILES_DIR/$id" "$original_path"
-        echo "Directory restored: $original_path"
-    else
-        # Restore file
-        mkdir -p "$(dirname "$original_path")"
+    # Prevent restoring into recycle bin itself
+    if [[ "$original_path" == "$RECYCLE_BIN_DIR"* ]]; then
+        echo -e "${RED}Error: Cannot restore inside recycle bin itself${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Attempt to restore inside recycle bin -> ID: $id" >> "$LOG_FILE"
+        return 1
+    fi
 
-        recycle_path="$FILES_DIR/$id.$type"
-        if [ ! -e "$recycle_path" ]; then
-            echo -e "${YELLOW}Warning: File not found in recycle bin: $recycle_path${NC}"
+    # Restoration process for directories
+    if [[ "$type" == "DIR" ]]; then
+        # Check disk space before merge or move
+        required_space=$(du -s "$FILES_DIR/$id" | awk '{print $1}') # KB
+        avail_space=$(df -k "$(dirname "$original_path")" | tail -1 | awk '{print $4}') # KB
+        if [ "$avail_space" -lt "$required_space" ]; then
+            echo -e "${RED}Error: Insufficient disk space to restore '$original_path'${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Insufficient disk space for directory '$original_path' -> ID: $id" >> "$LOG_FILE"
             return 1
         fi
 
-        # Handle conflict
-        if [ -e "$original_path" ]; then
-            echo -e "${YELLOW}Warning: File already exists at original location: $original_path${NC}"
-            read -rp "Overwrite? (y/n): " choice
-            case "$choice" in
-                [Yy]*) ;;
-                *) echo "Skipping $original_path"; return 0 ;;
-            esac
+        if [ -d "$original_path" ]; then
+            if ! rsync -a "$FILES_DIR/$id/" "$original_path/" 2>/dev/null; then
+                echo -e "${RED}Error: Permission denied while merging directory '$original_path'${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Permission denied for '$original_path' -> ID: $id" >> "$LOG_FILE"
+                return 1
+            fi
+            rm -rf "$FILES_DIR/$id"
+            echo "Directory restored (merged): $original_path"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | MERGED | Directory '$original_path' -> ID: $id" >> "$LOG_FILE"
+        else
+            if ! mv "$FILES_DIR/$id" "$original_path" 2>/dev/null; then
+                echo -e "${RED}Error: Permission denied while restoring directory '$original_path'${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Permission denied for '$original_path' -> ID: $id" >> "$LOG_FILE"
+                return 1
+            fi
+            echo "Directory restored: $original_path"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | SUCCESS | Directory '$original_path' -> ID: $id" >> "$LOG_FILE"
+        fi
+    else
+        # Restoration process for files
+        # Ensure parent directory exists
+        if ! mkdir -p "$(dirname "$original_path")" 2>/dev/null; then
+            echo -e "${RED}Error: Cannot create parent directory for '$original_path' (permission denied)${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Cannot create parent directory for '$original_path' -> ID: $id" >> "$LOG_FILE"
+            return 1
         fi
 
-        mv "$recycle_path" "$original_path"
-        echo "File restored: $original_path"
+        recycle_path="$FILES_DIR/$id.$type"
+
+        #Error Handling in the case of the file not existing inside the recycle b
+        if [ ! -e "$recycle_path" ]; then
+            echo -e "${YELLOW}Warning: File not found in recycle bin: $recycle_path${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | File missing: '$recycle_path' -> ID: $id" >> "$LOG_FILE"
+            return 1
+        fi
+
+        # Error Handling in case of insuficient disk space
+        required_space=$(du -k "$recycle_path" | awk '{print $1}')
+        avail_space=$(df -k "$(dirname "$original_path")" | tail -1 | awk '{print $4}')
+        if [ "$avail_space" -lt "$required_space" ]; then
+            echo -e "${RED}Error: Insufficient disk space to restore '$original_path'${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Insufficient disk space for '$original_path' -> ID: $id" >> "$LOG_FILE"
+            return 1
+        fi
+
+        # Handle conflicts
+        if [ -e "$original_path" ]; then
+            echo -e "${YELLOW}Warning: File already exists at original location: $original_path${NC}"
+            echo "Choose action: [O]verwrite / [R]estore with modified name / [C]ancel"
+            read -rp "(O/R/C): " choice
+            case "$choice" in
+                [Oo]*)
+                    if ! mv -f "$recycle_path" "$original_path" 2>/dev/null; then
+                        echo -e "${RED}Error: Permission denied while overwriting '$original_path'${NC}"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Permission denied for '$original_path' -> ID: $id" >> "$LOG_FILE"
+                        return 1
+                    fi
+                    echo "File restored (overwritten): $original_path"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | OVERWRITE | File '$original_path' -> ID: $id" >> "$LOG_FILE"
+                    ;;
+                [Rr]*)
+                    timestamp=$(date "+%Y%m%d%H%M%S")
+                    new_name="${original_path%.*}_$timestamp.${type}"
+                    if ! mv "$recycle_path" "$new_name" 2>/dev/null; then
+                        echo -e "${RED}Error: Permission denied while restoring with new name '$new_name'${NC}"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Permission denied for '$new_name' -> ID: $id" >> "$LOG_FILE"
+                        return 1
+                    fi
+                    echo "File restored with new name: $new_name"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | RENAMED | File '$new_name' -> ID: $id" >> "$LOG_FILE"
+                    original_path="$new_name"
+                    ;;
+                [Cc]*)
+                    echo "Restore cancelled for $original_path"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | CANCEL | File '$original_path' -> ID: $id" >> "$LOG_FILE"
+                    return 0
+                    ;;
+                *)
+                    echo "Invalid choice. Skipping $original_path"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | CANCEL | File '$original_path' -> ID: $id" >> "$LOG_FILE"
+                    return 0
+                    ;;
+            esac
+        else
+            if ! mv "$recycle_path" "$original_path" 2>/dev/null; then
+                echo -e "${RED}Error: Permission denied while restoring '$original_path'${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Permission denied for '$original_path' -> ID: $id" >> "$LOG_FILE"
+                return 1
+            fi
+            echo "File restored: $original_path"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | SUCCESS | File '$original_path' -> ID: $id" >> "$LOG_FILE"
+        fi
+
+        # Restore permissions
+        perm_bits="${perms#-}"
+        owner_bits=0; group_bits=0; other_bits=0
+        [[ ${perm_bits:0:1} == "r" ]] && ((owner_bits+=4))
+        [[ ${perm_bits:1:1} == "w" ]] && ((owner_bits+=2))
+        [[ ${perm_bits:2:1} == "x" ]] && ((owner_bits+=1))
+        [[ ${perm_bits:3:1} == "r" ]] && ((group_bits+=4))
+        [[ ${perm_bits:4:1} == "w" ]] && ((group_bits+=2))
+        [[ ${perm_bits:5:1} == "x" ]] && ((group_bits+=1))
+        [[ ${perm_bits:6:1} == "r" ]] && ((other_bits+=4))
+        [[ ${perm_bits:7:1} == "w" ]] && ((other_bits+=2))
+        [[ ${perm_bits:8:1} == "x" ]] && ((other_bits+=1))
+
+        num_permissions="${owner_bits}${group_bits}${other_bits}"
+        chmod "$num_permissions" "$original_path"
+        echo "Permissions restored: $perms ($num_permissions)"
     fi
 
-    # Remove metadata entry
+    # Remove entry from metadata
     grep -v "^$id," "$METADATA_FILE" > "$METADATA_FILE.tmp" && mv "$METADATA_FILE.tmp" "$METADATA_FILE"
 
     return 0
