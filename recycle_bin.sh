@@ -195,7 +195,10 @@ list_recycled() {
 
                 printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
                     "$id" "$name" "$type" "$date" "$size_h" "$perms" "$owner" "$path"
+            
             done
+
+
 
         echo
         echo "Detailed mode enabled"
@@ -684,6 +687,54 @@ main() {
             ;;
         esac
 }
+
+
+show_statistics() {
+    # Verifica se há itens na recycle bin
+    if [ "$(tail -n +3 "$METADATA_FILE" | wc -l)" -eq 0 ]; then
+        echo "The Recycle Bin is empty."
+        return 0
+    fi
+
+    total_items=$(tail -n +3 "$METADATA_FILE" | wc -l)
+    total_size_bytes=$(tail -n +3 "$METADATA_FILE" | awk -F',' '{sum+=$5} END{print sum}')
+
+    # Calcula total em formato legível
+    if [ "$total_size_bytes" -ge 1073741824 ]; then
+
+    # O valor 1073741824 segundo o chatgot vem da expressão 1GB=1024MB×1024KB×1024B=1073741824B
+        total_size=$(echo "scale=2; $total_size_bytes/1073741824" | bc)GB
+    elif [ "$total_size_bytes" -ge 1048576 ]; then
+        total_size=$(echo "scale=2; $total_size_bytes/1048576" | bc)MB
+    elif [ "$total_size_bytes" -ge 1024 ]; then
+        total_size=$(echo "scale=2; $total_size_bytes/1024" | bc)KB
+    else
+        total_size="${total_size_bytes}B"
+    fi
+
+    # Tipo de arquivo
+    files_count=$(tail -n +3 "$METADATA_FILE" | awk -F',' '$6 != "directory" {count++} END{print count+0}')
+    dirs_count=$(tail -n +3 "$METADATA_FILE" | awk -F',' '$6 == "directory" {count++} END{print count+0}')
+
+    # Data mais antiga e mais recente
+    oldest_date=$(tail -n +3 "$METADATA_FILE" | sort -t',' -k4 | head -n1 | awk -F',' '{print $4}')
+    newest_date=$(tail -n +3 "$METADATA_FILE" | sort -t',' -k4 | tail -n1 | awk -F',' '{print $4}')
+
+    # Tamanho médio
+    avg_size=$(tail -n +3 "$METADATA_FILE" | awk -F',' '{sum+=$5; count++} END{if(count>0) printf "%.2f", sum/count; else print 0}')
+
+    echo "=== Recycle Bin Statistics ==="
+    echo "Total items      : $total_items"
+    echo "Total size       : $total_size bytes"
+    echo "Files            : $files_count"
+    echo "Directories      : $dirs_count"
+    echo "Oldest item      : $oldest_date"
+    echo "Newest item      : $newest_date"
+    echo "Average file size: $avg_size bytes"
+    echo "=============================="
+    return 0
+}
+
 
 # Execute main function with all arguments
 main "$@"
