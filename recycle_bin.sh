@@ -140,6 +140,36 @@ list_recycled() {
         return 0
     fi
 
+    # --- Detailed Mode ---
+    if [[ "$1" == "--detailed" ]]; then
+        echo "=== Detailed Recycle Bin Content ==="
+
+        # Cabeçalho da tabela
+        printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
+            "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "ORIGINAL_PATH"
+        printf "%0.s-" {1..160}; echo
+
+        # Lê e mostra todos os registos em formato completo
+        tail -n +3 "$METADATA_FILE" \
+            | sort -t ',' -k2,2 \
+            | while IFS=',' read -r id name path date size type perms owner; do
+                # Converte tamanho para formato legível (se disponível)
+                if command -v numfmt >/dev/null 2>&1; then
+                    size_h=$(numfmt --to=iec --suffix=B "$size" 2>/dev/null || echo "$size B")
+                else
+                    size_h="$size B"
+                fi
+
+                printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
+                    "$id" "$name" "$type" "$date" "$size_h" "$perms" "$owner" "$path"
+            done
+
+        echo
+        echo "Detailed mode enabled"
+        return 0
+    fi
+    # --- Fim do Detailed Mode ---
+
 
     # Determina o critério de ordenação (por defeito: name)
     local sort_by="name"
@@ -179,6 +209,7 @@ list_recycled() {
     echo "Sorted by: $sort_by"
     return 0
 }
+
 
 
 #################################################
@@ -357,7 +388,7 @@ empty_recyclebin() {
 # Returns: 0 on success
 #################################################
 search_recycled() {
-        # If the first argument is "date", activate date-range mode
+    # --- Search by date range ---
     if [ "$1" = "date" ]; then
         local start_date="$2"
         local end_date="$3"
@@ -369,26 +400,33 @@ search_recycled() {
         fi
 
         echo "Results for deletion dates between '$start_date' and '$end_date':"
-        results_found=0
+        local start_ts end_ts file_ts results_found=0
 
-        local start_ts end_ts file_ts
         start_ts=$(date -d "$start_date" +%s 2>/dev/null)
         end_ts=$(date -d "$end_date" +%s 2>/dev/null)
-
         if [ -z "$start_ts" ] || [ -z "$end_ts" ]; then
             echo -e "${RED}Error: Invalid date format.${NC}"
             echo "Use format: YYYY-MM-DD HH:MM:SS"
             return 1
         fi
 
+        # Cabeçalho da tabela
+        printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
+            "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "ORIGINAL_PATH"
+        printf "%0.s-" {1..160}; echo
+
         tail -n +3 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
             file_ts=$(date -d "$date" +%s 2>/dev/null)
             if [ "$file_ts" -ge "$start_ts" ] && [ "$file_ts" -le "$end_ts" ]; then
-                printf "%0.s-" {1..140}; echo
-                while IFS=',' read -r id name path date size type perms owner; do
-                    printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
-                        "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
-                done
+                if command -v numfmt >/dev/null 2>&1; then
+                    size_h=$(numfmt --to=iec --suffix=B "$size" 2>/dev/null || echo "$size B")
+                else
+                    size_h="$size B"
+                fi
+
+                printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
+                    "$id" "$name" "$type" "$date" "$size_h" "$perms" "$owner" "$path"
+                results_found=1
             fi
         done
 
@@ -398,29 +436,36 @@ search_recycled() {
         return 0
     fi
 
+    # --- Search by pattern or type ---
     local pattern="$1"
     if [ -z "$pattern" ]; then
         echo -e "${RED}Error: No search pattern specified${NC}"
-        echo "Usage: $0 search <pattern>"
+        echo "Usage: $0 search <pattern> OR $0 search date <start> <end>"
         return 1
     fi
 
-    echo "Results for '$pattern':"
-    results_found=0
-    while IFS=',' read -r id name path date size type perms owner; do
-        if [ "$name" = "ORIGINAL_NAME" ]; then
-            continue
-        elif [ "$name" = "TYPE" ]; then
-            continue
-        fi
+    echo "Results for pattern '$pattern':"
+    local results_found=0
 
-        if echo "$name,$type" | grep -iq "$pattern"; then
-            printf "%0.s-" {1..140}; echo
-            printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
-                        "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
+    # Cabeçalho da tabela
+    printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
+        "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "ORIGINAL_PATH"
+    printf "%0.s-" {1..160}; echo
+
+    tail -n +3 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
+        # Pesquisa no nome, path e tipo (extensão)
+        if echo "$name,$path,$type" | grep -Eiq "$pattern"; then
+            if command -v numfmt >/dev/null 2>&1; then
+                size_h=$(numfmt --to=iec --suffix=B "$size" 2>/dev/null || echo "$size B")
+            else
+                size_h="$size B"
+            fi
+
+            printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
+                "$id" "$name" "$type" "$date" "$size_h" "$perms" "$owner" "$path"
             results_found=1
         fi
-    done < "$METADATA_FILE"
+    done
 
     if [ "$results_found" -eq 0 ]; then
         echo "No results found."
@@ -428,6 +473,7 @@ search_recycled() {
 
     return 0
 }
+
 
 
 #################################################
