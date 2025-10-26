@@ -167,84 +167,81 @@ delete_file() {
 list_recycled() {
     echo "=== Recycle Bin Content ==="
 
+    # Ensure metadata file exists
+    if [ ! -f "$METADATA_FILE" ]; then
+        echo "Metadata file missing: $METADATA_FILE"
+        return 1
+    fi
+
     # Check if metadata has any entries beyond the first two lines
     if [ "$(tail -n +3 "$METADATA_FILE" | wc -l)" -eq 0 ]; then
         echo "The Recycle Bin is empty."
         return 0
     fi
 
-    # --- Detailed Mode ---
-    if [[ "$1" == "--detailed" ]]; then
-        echo "=== Detailed Recycle Bin Content ==="
-
-        # Cabeçalho da tabela
-        printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
-            "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "ORIGINAL_PATH"
-        printf "%0.s-" {1..160}; echo
-
-        # Lê e mostra todos os registos em formato completo
-        tail -n +3 "$METADATA_FILE" \
-            | sort -t ',' -k2,2 \
-            | while IFS=',' read -r id name path date size type perms owner; do
-                # Converte tamanho para formato legível (se disponível)
-                if command -v numfmt >/dev/null 2>&1; then
-                    size_h=$(numfmt --to=iec --suffix=B "$size" 2>/dev/null || echo "$size B")
-                else
-                    size_h="$size B"
-                fi
-
-                printf "%-20s %-20s %-10s %-25s %-10s %-10s %-15s %-40s\n" \
-                    "$id" "$name" "$type" "$date" "$size_h" "$perms" "$owner" "$path"
-            
-            done
-
-
-
-        echo
-        echo "Detailed mode enabled"
-        return 0
-    fi
-    # --- Fim do Detailed Mode ---
-
-
-    # Determina o critério de ordenação (por defeito: name)
+    local detailed=false
     local sort_by="name"
-    if [[ "$1" == "--sort" && -n "$2" ]]; then
-        case "$2" in
-            name|date|size) sort_by="$2" ;;
+    local pattern=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --detailed)
+                detailed=true; shift ;;
+            --sort)
+                if [[ "$2" =~ ^(name|date|size)$ ]]; then
+                    sort_by="$2"; shift 2
+                else
+                    echo -e "${RED}Invalid sort option. Use: name, date, or size.${NC}"
+                    return 1
+                fi ;;
             *)
-                echo -e "${RED}Invalid sort option. Use: name, date or size.${NC}"
-                return 1
-                ;;
+                pattern="$1"; shift ;;
         esac
-    fi
+    done
 
-    # Escolhe o campo de ordenação (coluna correspondente)
-    # 1:ID 2:NAME 3:PATH 4:DATE 5:SIZE 6:TYPE 7:PERMS 8:OWNER
-    local sort_col
+    local sort_field sort_opts
     case "$sort_by" in
-        name) sort_col=2 ;;
-        date) sort_col=4 ;;
-        size) sort_col=5 ;;
+        name) sort_field=2; sort_opts="-t, -k${sort_field},${sort_field}" ;;
+        date) sort_field=4; sort_opts="-t, -k${sort_field},${sort_field}" ;;
+        size) sort_field=5; sort_opts="-t, -k${sort_field},${sort_field}n" ;;
     esac
 
-    # Imprime o cabeçalho da tabela
-    printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
-        "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "PATH"
-    printf "%0.s-" {1..140}; echo
+    if [ "$detailed" = true ]; then
+        printf "%-20s %-20s %-10s %-25s %-10s %-15s %-15s %-s\n" \
+            "ID" "NAME" "TYPE" "DELETION_DATE" "SIZE" "PERMS" "OWNER" "PATH"
+        printf "%0.s-" {1..160}; echo
 
-    # Lê o ficheiro metadata (sem o cabeçalho) e ordena conforme a flag
-    tail -n +3 "$METADATA_FILE" \
-        | sort -t ',' -k"$sort_col","$sort_col" \
-        | while IFS=',' read -r id name path date size type perms owner; do
-            printf "%-20s %-15s %-10s %-25s %-10s %-15s %-10s %-10s\n" \
-                "$id" "$name" "$type" "$date" "$size" "$perms" "$owner" "$path"
+        tail -n +3 "$METADATA_FILE" | sort $sort_opts | while IFS=',' read -r id name path date size type perms owner; do
+            if command -v numfmt >/dev/null 2>&1; then
+                size_h=$(numfmt --to=iec --suffix=B "$size" 2>/dev/null || echo "$size B")
+            else
+                size_h="$size B"
+            fi
+            printf "%-20s %-20s %-10s %-25s %-10s %-15s %-15s %-s\n" \
+                "$id" "$name" "$type" "$date" "$size_h" "$perms" "$owner" "$path"
         done
+        echo
+        echo "Detailed mode enabled (sorted by: $sort_by)"
+        return 0
+    fi
+
+    printf "%-20s %-20s %-25s %-10s %-s\n" \
+        "ID" "NAME" "DELETION_DATE" "SIZE"
+    printf "%0.s-" {1..75}; echo
+
+    tail -n +3 "$METADATA_FILE" | sort $sort_opts | while IFS=',' read -r id name path date size type perms owner; do
+        printf "%-20s %-20s %-25s %-10s %-s\n" \
+            "$id" "$name" "$date" "$size"
+    done
 
     echo
     echo "Sorted by: $sort_by"
     return 0
 }
+
+
+
+
+
 
 
 
@@ -293,12 +290,15 @@ restore_file() {
         # Check disk space before merge or move
         required_space=$(du -s "$FILES_DIR/$id" | awk '{print $1}') # KB
         avail_space=$(df -k "$(dirname "$original_path")" | tail -1 | awk '{print $4}') # KB
+
+        #Logging and Error Handling in case of insuficient disk space
         if [ "$avail_space" -lt "$required_space" ]; then
             echo -e "${RED}Error: Insufficient disk space to restore '$original_path'${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Insufficient disk space for directory '$original_path' -> ID: $id" >> "$LOG_FILE"
             return 1
         fi
 
+        # Logging and Error Handling in case of denied permissions during merging
         if [ -d "$original_path" ]; then
             if ! rsync -a "$FILES_DIR/$id/" "$original_path/" 2>/dev/null; then
                 echo -e "${RED}Error: Permission denied while merging directory '$original_path'${NC}"
@@ -308,11 +308,13 @@ restore_file() {
             rm -rf "$FILES_DIR/$id"
             echo "Directory restored (merged): $original_path"
             echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | MERGED | Directory '$original_path' -> ID: $id" >> "$LOG_FILE"
+        # Logging and Error Handling in case of denied permissions during restoring
         else
             if ! mv "$FILES_DIR/$id" "$original_path" 2>/dev/null; then
                 echo -e "${RED}Error: Permission denied while restoring directory '$original_path'${NC}"
                 echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | ERROR | Permission denied for '$original_path' -> ID: $id" >> "$LOG_FILE"
                 return 1
+            #Logging the successful restoration of the directory
             fi
             echo "Directory restored: $original_path"
             echo "$(date '+%Y-%m-%d %H:%M:%S') | RESTORE | SUCCESS | Directory '$original_path' -> ID: $id" >> "$LOG_FILE"
@@ -648,47 +650,6 @@ EOF
     return 0
 }
 
-
-#################################################
-# Function: main
-# Description: Main program logic
-# Parameters: Command line arguments
-# Returns: Exit code
-#################################################
-main() {
-    # Initialize recycle bin
-    initialize_recyclebin
-    # Parse command line arguments
-    case "$1" in
-        delete)
-            shift
-            delete_file "$@"
-            ;;
-        list)
-            list_recycled
-            ;;
-        restore)
-            restore_file "$2"
-            ;;
-        search)
-            shift
-            search_recycled "$@"
-            ;;
-        empty)
-            shift
-            empty_recyclebin "$@"
-            ;;
-        help|--help|-h)
-            display_help
-            ;;
-        *)
-            echo "Invalid option. Use 'help' for usage information."
-            exit 1
-            ;;
-        esac
-}
-
-
 show_statistics() {
     # Verifica se há itens na recycle bin
     if [ "$(tail -n +3 "$METADATA_FILE" | wc -l)" -eq 0 ]; then
@@ -702,7 +663,7 @@ show_statistics() {
     # Calcula total em formato legível
     if [ "$total_size_bytes" -ge 1073741824 ]; then
 
-    # O valor 1073741824 segundo o chatgot vem da expressão 1GB=1024MB×1024KB×1024B=1073741824B
+    # O valor 1073741824 segundo o chatgpt vem da expressão 1GB=1024MB×1024KB×1024B=1073741824B
         total_size=$(echo "scale=2; $total_size_bytes/1073741824" | bc)GB
     elif [ "$total_size_bytes" -ge 1048576 ]; then
         total_size=$(echo "scale=2; $total_size_bytes/1048576" | bc)MB
@@ -725,7 +686,7 @@ show_statistics() {
 
     echo "=== Recycle Bin Statistics ==="
     echo "Total items      : $total_items"
-    echo "Total size       : $total_size bytes"
+    echo "Total size       : $total_size"
     echo "Files            : $files_count"
     echo "Directories      : $dirs_count"
     echo "Oldest item      : $oldest_date"
@@ -735,6 +696,47 @@ show_statistics() {
     return 0
 }
 
+#################################################
+# Function: main
+# Description: Main program logic
+# Parameters: Command line arguments
+# Returns: Exit code
+#################################################
+main() {
+    # Initialize recycle bin
+    initialize_recyclebin
+    # Parse command line arguments
+    case "$1" in
+        delete)
+            shift
+            delete_file "$@"
+            ;;
+        list)
+            list_recycled "$@"
+            ;;
+        restore)
+            restore_file "$2"
+            ;;
+        search)
+            shift
+            search_recycled "$@"
+            ;;
+        empty)
+            shift
+            empty_recyclebin "$@"
+            ;;
+        help|--help|-h)
+            display_help
+            ;;
+        stats)
+            show_statistics
+            ;;
+        *)
+            echo "Invalid option. Use 'help' for usage information."
+            exit 1
+            ;;
+        esac
+}
 
 # Execute main function with all arguments
 main "$@"
