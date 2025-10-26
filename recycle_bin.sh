@@ -724,7 +724,29 @@ auto_cleanup() {
         fi
     done
     echo "Cleanup complete. $deleted_count old items deleted."
-}    
+} 
+
+check_quota() {
+    # Define quota máxima em MB e converte para bytes
+    MAX_SIZE_MB=2048
+    MAX_SIZE_BYTES=$((MAX_SIZE_MB * 1024 * 1024))
+
+    # Calcula tamanho total do recycle bin, incluindo todos os ficheiros e subdiretórios
+    current_size=$(du -sb "$FILES_DIR" 2>/dev/null | awk '{print $1}')
+
+    # Converte bytes para MB e GB para exibição
+    current_size_MB=$(echo "scale=2; $current_size/1024/1024" | bc)
+    MAX_SIZE_GB=$(echo "scale=2; $MAX_SIZE_BYTES/1024/1024/1024" | bc)
+
+    # Verifica se a quota foi ultrapassada
+    if [ "$current_size" -gt "$MAX_SIZE_BYTES" ]; then
+        echo -e "${RED}Warning: Recycle bin quota exceeded!${NC}"
+        echo "Current size: $current_size_MB MB"
+        echo "Max quota: $MAX_SIZE_GB GB"
+        auto_cleanup
+    fi
+}
+
 
 #################################################
 # Function: main
