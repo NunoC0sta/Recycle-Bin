@@ -169,6 +169,15 @@ test_display_help() {
     assert_success "Display help information"
 }
 
+test_show_statistics() {
+    echo "=== Test: Show Statistics ==="
+    setup
+    echo "data" > "$TEST_DIR/stat1.txt"
+    $SCRIPT delete "$TEST_DIR/stat1.txt"
+    $SCRIPT stats | grep -q "Total items"
+    assert_success "Show recycle bin statistics"
+}
+
 # ============================
 # Edge Cases
 # ============================
@@ -343,6 +352,7 @@ test_empty_recyclebin
 test_search_existing_file
 test_search_nonexistent_file
 test_display_help
+test_show_statistics
 test_delete_nonexistent_file
 test_delete_no_permissions
 test_restore_existing_filename

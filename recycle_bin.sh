@@ -674,8 +674,8 @@ show_statistics() {
     fi
 
     # Tipo de arquivo
-    files_count=$(tail -n +3 "$METADATA_FILE" | awk -F',' '$6 != "directory" {count++} END{print count+0}')
-    dirs_count=$(tail -n +3 "$METADATA_FILE" | awk -F',' '$6 == "directory" {count++} END{print count+0}')
+    files_count=$(tail -n +3 "$METADATA_FILE" | awk -F',' '$6 != "DIR" {count++} END{print count+0}')
+    dirs_count=$(tail -n +3 "$METADATA_FILE" | awk -F',' '$6 == "DIR" {count++} END{print count+0}')
 
     # Data mais antiga e mais recente
     oldest_date=$(tail -n +3 "$METADATA_FILE" | sort -t',' -k4 | head -n1 | awk -F',' '{print $4}')
