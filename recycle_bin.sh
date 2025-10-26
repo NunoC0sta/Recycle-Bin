@@ -696,6 +696,36 @@ show_statistics() {
     return 0
 }
 
+
+auto_cleanup() {
+    if [ "$(tail -n +3 "$METADATA_FILE" | wc -l)" -eq 0 ]; then
+        echo "The Recycle Bin is empty"
+        return 0
+    fi
+
+    current_time=$(date +%s)
+    retention_days=30
+    deletion_count=0
+
+    tail -n +3 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
+        deletion_time=$(date -d "$date" +%s 2>/dev/null) #Isto aqui eu vi no chatgpt. Resumidamente ignora os erros por exemplo, se a data estiver mal formatada
+        if [ -n "$deletion_time" ]; then
+            diff_days=$(( (current_time - deletion_time) / 86400 ))
+
+            if [ "$diff_days" -gt "$retention_days" ]; then
+                echo "Deleting $name (deleted $diff_days days ago)..."
+                rm -f "$RECYCLE_DIR/$id"
+                deleted_count=$((deleted_count + 1))
+
+
+            fi
+
+
+        fi
+    done
+    echo "Cleanup complete. $deleted_count old items deleted."
+}    
+
 #################################################
 # Function: main
 # Description: Main program logic
