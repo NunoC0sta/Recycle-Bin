@@ -748,6 +748,60 @@ check_quota() {
 }
 
 
+preview_file() {
+    local file_id="$1"
+
+    # Verifica se o ID foi fornecido
+    if [ -z "$file_id" ]; then
+        echo -e "${RED}Error: No file ID specified${NC}"
+        echo "Usage: $0 preview <file_id>"
+        return 1
+    fi
+
+    # Procura o ficheiro correspondente no metadata
+    local file_entry
+    file_entry=$(grep "^$file_id," "$METADATA_FILE")
+
+    # Se não encontrar o ficheiro
+    if [ -z "$file_entry" ]; then
+        echo -e "${RED}Error: File ID not found in recycle bin${NC}"
+        return 1
+    fi
+
+    # Lê os campos do metadata
+    IFS=',' read -r id name path date size type perms owner <<< "$file_entry"
+
+    # Caminho completo do ficheiro dentro do recycle bin
+    local file_path="$FILES_DIR/$id"
+
+    # Verifica se o ficheiro realmente existe
+    if [ ! -f "$file_path" ]; then
+        echo -e "${RED}Error: File not found in recycle bin directory${NC}"
+        return 1
+    fi
+
+    echo "=== File Preview ==="
+    echo "Name: $name"
+    echo "Type: $type"
+    echo "Size: $size bytes"
+    echo "Deleted on: $date"
+    echo
+    printf "%0.s-" {1..80}; echo
+
+    # Verifica se é um ficheiro de texto
+    if file "$file_path" | grep -q "text"; then
+        echo "Showing first 10 lines of text file:"
+        head -n 10 "$file_path"
+    else
+        echo "Binary or non-text file detected:"
+        file "$file_path"
+    fi
+
+    printf "%0.s-" {1..80}; echo
+    echo "End of preview"
+}
+
+
 #################################################
 # Function: main
 # Description: Main program logic
