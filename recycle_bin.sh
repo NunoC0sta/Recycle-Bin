@@ -697,108 +697,71 @@ show_statistics() {
 }
 
 
+# -----------------------------------------------
+# Function: auto_cleanup
+# Description: Automatically deletes files from the recycle bin that have been there for more than 30 days.
+# Arguments: None
+# Returns: 0 if recycle bin is empty; otherwise performs deletions.
+# -----------------------------------------------
 auto_cleanup() {
-    if [ "$(tail -n +3 "$METADATA_FILE" | wc -l)" -eq 0 ]; then
+    if ["$(tail -n +3 "$METADATA_FILE" | wc -l -eq 0)"]; then
         echo "The Recycle Bin is empty"
         return 0
     fi
 
     current_time=$(date +%s)
-    retention_days=30
-    deletion_count=0
+    deletion_time=$(date -d "$date" +%s)
+    diff_time=$( ( ( current_time - deletion_time ) / 86400 ) )
 
-    tail -n +3 "$METADATA_FILE" | while IFS=',' read -r id name path date size type perms owner; do
-        deletion_time=$(date -d "$date" +%s 2>/dev/null) #Isto aqui eu vi no chatgpt. Resumidamente ignora os erros por exemplo, se a data estiver mal formatada
-        if [ -n "$deletion_time" ]; then
-            diff_days=$(( (current_time - deletion_time) / 86400 ))
-
-            if [ "$diff_days" -gt "$retention_days" ]; then
-                echo "Deleting $name (deleted $diff_days days ago)..."
-                rm -f "$RECYCLE_DIR/$id"
-                deleted_count=$((deleted_count + 1))
-
-
-            fi
-
-
-        fi
-    done
-    echo "Cleanup complete. $deleted_count old items deleted."
-} 
-
-check_quota() {
-    # Define quota máxima em MB e converte para bytes
-    MAX_SIZE_MB=2048
-    MAX_SIZE_BYTES=$((MAX_SIZE_MB * 1024 * 1024))
-
-    # Calcula tamanho total do recycle bin, incluindo todos os ficheiros e subdiretórios
-    current_size=$(du -sb "$FILES_DIR" 2>/dev/null | awk '{print $1}')
-
-    # Converte bytes para MB e GB para exibição
-    current_size_MB=$(echo "scale=2; $current_size/1024/1024" | bc)
-    MAX_SIZE_GB=$(echo "scale=2; $MAX_SIZE_BYTES/1024/1024/1024" | bc)
-
-    # Verifica se a quota foi ultrapassada
-    if [ "$current_size" -gt "$MAX_SIZE_BYTES" ]; then
-        echo -e "${RED}Warning: Recycle bin quota exceeded!${NC}"
-        echo "Current size: $current_size_MB MB"
-        echo "Max quota: $MAX_SIZE_GB GB"
-        auto_cleanup
+    if [ "$diff_time" -gt 30 ];then
+        rm -f "RECYCLED_DIR7$id"
     fi
 }
 
 
+# -----------------------------------------------
+# Function: check_quota
+# Description: Checks if the total size of files in the recycle bin exceeds the defined maximum size (2 GB). Triggers auto_cleanup() if exceeded.
+# Arguments: None
+# Returns: Displays a warning if the quota is exceeded.
+# -----------------------------------------------
+check_quota() {
+
+    MAX_SIZE_MB=2048
+    MAX_SIZE_BYTES=$((MAX_SIZE_MB * 1024 * 1024))
+    current_size=$(du -cb "$FILES_DIR"/* 2>/dev/null | tail -n1 | awk '{print $1}')
+
+    if [ "$current_size" -gt "$MAX_SIZE_BYTES" ]; then
+        echo "Warning: Recycle bin quota exceeded ($current_size bytes > $MAX_SIZE_BYTES bytes (2GB))"
+        auto_cleanup
+    fi
+
+}
+
+# -----------------------------------------------
+# Function: preview_file
+# Description: Displays the first 10 lines of a text file or shows file type information if it is a binary file.
+# Arguments: 
+#   $1 - File ID (identifier of the file to preview)
+# Returns: Displays preview or file type info on screen.
+# -----------------------------------------------
 preview_file() {
-    local file_id="$1"
+    file_path="$RECYCLED_DIR/$1"
 
-    # Verifica se o ID foi fornecido
-    if [ -z "$file_id" ]; then
-        echo -e "${RED}Error: No file ID specified${NC}"
-        echo "Usage: $0 preview <file_id>"
-        return 1
-    fi
-
-    # Procura o ficheiro correspondente no metadata
-    local file_entry
-    file_entry=$(grep "^$file_id," "$METADATA_FILE")
-
-    # Se não encontrar o ficheiro
-    if [ -z "$file_entry" ]; then
-        echo -e "${RED}Error: File ID not found in recycle bin${NC}"
-        return 1
-    fi
-
-    # Lê os campos do metadata
-    IFS=',' read -r id name path date size type perms owner <<< "$file_entry"
-
-    # Caminho completo do ficheiro dentro do recycle bin
-    local file_path="$FILES_DIR/$id"
-
-    # Verifica se o ficheiro realmente existe
     if [ ! -f "$file_path" ]; then
-        echo -e "${RED}Error: File not found in recycle bin directory${NC}"
+        echo "File not found in recycle bin."
         return 1
     fi
 
-    echo "=== File Preview ==="
-    echo "Name: $name"
-    echo "Type: $type"
-    echo "Size: $size bytes"
-    echo "Deleted on: $date"
-    echo
-    printf "%0.s-" {1..80}; echo
+    file_type=$(file --mime-type -b "$file_path")
 
-    # Verifica se é um ficheiro de texto
-    if file "$file_path" | grep -q "text"; then
-        echo "Showing first 10 lines of text file:"
+    if [[ "$file_type" == text/* ]]; then
+        echo "---- Preview of $1 ----"
         head -n 10 "$file_path"
     else
-        echo "Binary or non-text file detected:"
+        echo "---- Binary File Information ----"
         file "$file_path"
     fi
-
-    printf "%0.s-" {1..80}; echo
-    echo "End of preview"
 }
 
 
