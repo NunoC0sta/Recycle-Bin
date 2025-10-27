@@ -727,16 +727,23 @@ auto_cleanup() {
 # -----------------------------------------------
 check_quota() {
 
-    MAX_SIZE_MB=2048
+    MAX_SIZE_MB=1024
     MAX_SIZE_BYTES=$((MAX_SIZE_MB * 1024 * 1024))
-    current_size=$(du -cb "$FILES_DIR"/* 2>/dev/null | tail -n1 | awk '{print $1}')
 
-    if [ "$current_size" -gt "$MAX_SIZE_BYTES" ]; then
-        echo "Warning: Recycle bin quota exceeded ($current_size bytes > $MAX_SIZE_BYTES bytes (2GB))"
-        auto_cleanup
+    # Usa "." para garantir que mesmo pastas vazias são contabilizadas
+    current_size=$(du -cb "$FILES_DIR"/* 2>/dev/null | tail -n1 | awk '{print $1}') #Isto do 2>/dev/nul vi no chatgpt, resumidante faz com que ignore todos os erros que possam aparecer
+    
+    # Se current_size estiver vazio (pasta vazia), define como 0
+    if [ -z "$current_size" ]; then
+        current_size=0
     fi
 
+    if [ "$current_size" -gt "$MAX_SIZE_BYTES" ]; then
+        echo "Warning: Recycle bin quota exceeded ($current_size bytes > $MAX_SIZE_BYTES bytes (1GB))"
+        auto_cleanup
+    fi
 }
+
 
 # -----------------------------------------------
 # Function: preview_file
